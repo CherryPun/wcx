@@ -1,0 +1,221 @@
+{
+  "seed": 42,
+  "train": {
+    "core": {
+      "split": "train_in_sample",
+      "n_nodes": 21291,
+      "miner_hit_rate_at_1": 0.1750974590202433,
+      "operator_hit_rate_at_1": 0.17674134610868442,
+      "miner_hit_rate_at_3": null,
+      "operator_hit_rate_at_3": null,
+      "miner_realized_coverage": 0.5738574984735334,
+      "operator_realized_coverage": 0.5855995491052557,
+      "miner_realized_regret": 0.4352412756127334,
+      "operator_realized_regret": 0.48152610995794487,
+      "miner_value_capture": 0.5647587243872666,
+      "operator_value_capture": 0.5184738900420551,
+      "operator_nonpositive_best_count": 35,
+      "operator_near_zero_best_count": 0,
+      "no_recommendation_events": 9982,
+      "baseline_business_miner": "10000251",
+      "baseline_business_operator": "10000251",
+      "baseline_miner_hit_rate_unfiltered": 0.14588323704851816,
+      "baseline_operator_hit_rate_unfiltered": 0.17190362124841482,
+      "baseline_miner_hit_rate_health_aware": 0.10121647644544643,
+      "baseline_operator_hit_rate_health_aware": 0.11436757315297544,
+      "automatic_pass_node_count": 0,
+      "manual_check_node_count": 16300,
+      "no_feasible_business_node_count": 4991,
+      "blocked_business_events": 429871,
+      "regression": {
+        "cost_mae": 3.2717952763088913,
+        "cost_rmse": 78.61122127363254,
+        "cost_r2": 0.038380130992415995,
+        "profit_mae": 1.2723489002927513,
+        "profit_rmse": 29.681759833811064,
+        "profit_r2": 0.021915822479417257
+      },
+      "model_minus_baseline_miner": {
+        "difference": 0.07388098257479686,
+        "ci95_low": 0.07026325677516322,
+        "ci95_high": 0.07730966135925978,
+        "p_value": 0.0004997501249375312
+      },
+      "model_minus_baseline_operator": {
+        "difference": 0.062373772955708985,
+        "ci95_low": 0.059130618571227284,
+        "ci95_high": 0.06556761072753746,
+        "p_value": 0.0004997501249375312
+      }
+    },
+    "enriched": {
+      "split": "train_in_sample",
+      "n_nodes": 21291,
+      "miner_hit_rate_at_1": 0.17627166408341552,
+      "operator_hit_rate_at_1": 0.17852613780470622,
+      "miner_hit_rate_at_3": null,
+      "operator_hit_rate_at_3": null,
+      "miner_realized_coverage": 0.5788361279413837,
+      "operator_realized_coverage": 0.5842844394345028,
+      "miner_realized_regret": 0.436234910345327,
+      "operator_realized_regret": 0.4787342658708247,
+      "miner_value_capture": 0.563765089654673,
+      "operator_value_capture": 0.5212657341291754,
+      "operator_nonpositive_best_count": 36,
+      "operator_near_zero_best_count": 0,
+      "no_recommendation_events": 9982,
+      "baseline_business_miner": "10000251",
+      "baseline_business_operator": "10000251",
+      "baseline_miner_hit_rate_unfiltered": 0.14588323704851816,
+      "baseline_operator_hit_rate_unfiltered": 0.17190362124841482,
+      "baseline_miner_hit_rate_health_aware": 0.10121647644544643,
+      "baseline_operator_hit_rate_health_aware": 0.11436757315297544,
+      "automatic_pass_node_count": 0,
+      "manual_check_node_count": 16300,
+      "no_feasible_business_node_count": 4991,
+      "blocked_business_events": 429871,
+      "regression": {
+        "cost_mae": 3.26608396071982,
+        "cost_rmse": 78.45677745525903,
+        "cost_r2": 0.042154919133418955,
+        "profit_mae": 1.2648133974346356,
+        "profit_rmse": 29.332695816861786,
+        "profit_r2": 0.044785520370790644
+      },
+      "model_minus_baseline_miner": {
+        "difference": 0.07505518763796909,
+        "ci95_low": 0.07139166784087173,
+        "ci95_high": 0.07862477103001268,
+        "p_value": 0.0004997501249375312
+      },
+      "model_minus_baseline_operator": {
+        "difference": 0.06415856465173078,
+        "ci95_low": 0.06087079047484853,
+        "ci95_high": 0.06749330703113991,
+        "p_value": 0.0004997501249375312
+      }
+    },
+    "n_nodes": 21291,
+    "miner_enriched_minus_core": {
+      "difference": 0.0011742050631722324,
+      "ci95_low": 0.0002818092151613358,
+      "ci95_high": 0.0021605373162369075,
+      "p_value": 0.021989005497251374
+    },
+    "operator_enriched_minus_core": {
+      "difference": 0.0017847916960217934,
+      "ci95_low": 0.0003757456202151144,
+      "ci95_high": 0.0031950119768916377,
+      "p_value": 0.013493253373313344
+    }
+  },
+  "test": {
+    "core": {
+      "split": "test_node_holdout",
+      "n_nodes": 5323,
+      "miner_hit_rate_at_1": 0.17790719519068193,
+      "operator_hit_rate_at_1": 0.18316738681194816,
+      "miner_hit_rate_at_3": null,
+      "operator_hit_rate_at_3": null,
+      "miner_realized_coverage": 0.5795603982716513,
+      "operator_realized_coverage": 0.5900807815141837,
+      "miner_realized_regret": 0.4346981831069953,
+      "operator_realized_regret": 0.49234555721481643,
+      "miner_value_capture": 0.5653018168930046,
+      "operator_value_capture": 0.5076544427851836,
+      "operator_nonpositive_best_count": 6,
+      "operator_near_zero_best_count": 0,
+      "no_recommendation_events": 2474,
+      "baseline_business_miner": "10000251",
+      "baseline_business_operator": "10000251",
+      "baseline_miner_hit_rate_unfiltered": 0.14766109336840127,
+      "baseline_operator_hit_rate_unfiltered": 0.17715573924478678,
+      "baseline_miner_hit_rate_health_aware": 0.1042645124929551,
+      "baseline_operator_hit_rate_health_aware": 0.12079654330264888,
+      "automatic_pass_node_count": 0,
+      "manual_check_node_count": 4086,
+      "no_feasible_business_node_count": 1237,
+      "blocked_business_events": 106426,
+      "regression": {
+        "cost_mae": 2.80045713569274,
+        "cost_rmse": 70.54556999441984,
+        "cost_r2": -0.30871522801269813,
+        "profit_mae": 1.2087647455891537,
+        "profit_rmse": 30.760814183230806,
+        "profit_r2": -0.2097241963695764
+      },
+      "model_minus_baseline_miner": {
+        "difference": 0.07364268269772685,
+        "ci95_low": 0.06594025925230133,
+        "ci95_high": 0.08059365019725719,
+        "p_value": 0.0004997501249375312
+      },
+      "model_minus_baseline_operator": {
+        "difference": 0.062370843509299265,
+        "ci95_low": 0.05560304339658088,
+        "ci95_high": 0.06895077963554384,
+        "p_value": 0.0004997501249375312
+      }
+    },
+    "enriched": {
+      "split": "test_node_holdout",
+      "n_nodes": 5323,
+      "miner_hit_rate_at_1": 0.1795979710689461,
+      "operator_hit_rate_at_1": 0.18354311478489574,
+      "miner_hit_rate_at_3": null,
+      "operator_hit_rate_at_3": null,
+      "miner_realized_coverage": 0.5846327259064438,
+      "operator_realized_coverage": 0.5876385496900244,
+      "miner_realized_regret": 0.4352293895589844,
+      "operator_realized_regret": 0.49129406662737574,
+      "miner_value_capture": 0.5647706104410156,
+      "operator_value_capture": 0.5087059333726242,
+      "operator_nonpositive_best_count": 5,
+      "operator_near_zero_best_count": 0,
+      "no_recommendation_events": 2474,
+      "baseline_business_miner": "10000251",
+      "baseline_business_operator": "10000251",
+      "baseline_miner_hit_rate_unfiltered": 0.14766109336840127,
+      "baseline_operator_hit_rate_unfiltered": 0.17715573924478678,
+      "baseline_miner_hit_rate_health_aware": 0.1042645124929551,
+      "baseline_operator_hit_rate_health_aware": 0.12079654330264888,
+      "automatic_pass_node_count": 0,
+      "manual_check_node_count": 4086,
+      "no_feasible_business_node_count": 1237,
+      "blocked_business_events": 106426,
+      "regression": {
+        "cost_mae": 2.794675298322276,
+        "cost_rmse": 70.27196309001081,
+        "cost_r2": -0.29858336179865796,
+        "profit_mae": 1.1839905529210586,
+        "profit_rmse": 30.205027324486103,
+        "profit_r2": -0.166404484296649
+      },
+      "model_minus_baseline_miner": {
+        "difference": 0.07533345857599098,
+        "ci95_low": 0.06763103513056547,
+        "ci95_high": 0.08247229006199512,
+        "p_value": 0.0004997501249375312
+      },
+      "model_minus_baseline_operator": {
+        "difference": 0.06274657148224685,
+        "ci95_low": 0.056166635356002255,
+        "ci95_high": 0.06913394702235581,
+        "p_value": 0.0004997501249375312
+      }
+    },
+    "n_nodes": 5323,
+    "miner_enriched_minus_core": {
+      "difference": 0.0016907758782641368,
+      "ci95_low": 0.00018786398647379298,
+      "ci95_high": 0.0033815517565282736,
+      "p_value": 0.06496751624187906
+    },
+    "operator_enriched_minus_core": {
+      "difference": 0.00037572797294758596,
+      "ci95_low": -0.0024422318241593085,
+      "ci95_high": 0.0031936877700544804,
+      "p_value": 0.904047976011994
+    }
+  }
+}

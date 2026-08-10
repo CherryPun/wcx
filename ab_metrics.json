@@ -1,0 +1,38 @@
+{
+  "base": {
+    "name": "BASE(仅node_join)",
+    "test": {
+      "n_nodes": 60,
+      "miner_hit_rate@1": 0.13333333333333333,
+      "operator_hit_rate@1": 0.13333333333333333,
+      "miner_hit_rate@3": 0.2,
+      "operator_hit_rate@3": 0.2833333333333333,
+      "miner_realized_coverage": 0.43333333333333335,
+      "operator_realized_coverage": 0.21666666666666667,
+      "miner_realized_regret": 1.5336538461538463,
+      "operator_realized_regret": 0.19038461538461532,
+      "miner_abs_regret": 1.2269230769230768,
+      "operator_abs_regret": 0.07615384615384616,
+      "miner_value_capture": -0.5336538461538463,
+      "operator_value_capture": 0.8096153846153846
+    }
+  },
+  "enriched": {
+    "name": "ENRICHED(+node_analysis静态)",
+    "test": {
+      "n_nodes": 60,
+      "miner_hit_rate@1": 0.13333333333333333,
+      "operator_hit_rate@1": 0.15,
+      "miner_hit_rate@3": 0.21666666666666667,
+      "operator_hit_rate@3": 0.26666666666666666,
+      "miner_realized_coverage": 0.2,
+      "operator_realized_coverage": 0.21666666666666667,
+      "miner_realized_regret": 0.567106710671067,
+      "operator_realized_regret": 0.1326923076923077,
+      "miner_abs_regret": 0.8591666666666667,
+      "operator_abs_regret": 0.05307692307692309,
+      "miner_value_capture": 0.432893289328933,
+      "operator_value_capture": 0.8673076923076923
+    }
+  }
+}

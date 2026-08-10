@@ -1,0 +1,52 @@
+{
+  "evaluation_time_bj": "2026-08-07T09:14:44+08:00",
+  "sample_node_count": 80,
+  "label_assumption": "按 node_id 直接匹配；未使用不可证实的 ID 变换",
+  "metrics": {
+    "node_cpu_seconds_total": {
+      "status": "success",
+      "result_count": 20384
+    },
+    "node_memory_MemTotal_bytes": {
+      "status": "success",
+      "result_count": 39
+    },
+    "node_disk_read_bytes_total": {
+      "status": "success",
+      "result_count": 707
+    },
+    "smart_available_spare": {
+      "status": "success",
+      "result_count": 61
+    },
+    "smart_bad_block_count": {
+      "status": "success",
+      "result_count": 2
+    },
+    "smart_case_temperature": {
+      "status": "success",
+      "result_count": 70
+    },
+    "smart_critical_warning": {
+      "status": "success",
+      "result_count": 62
+    },
+    "zfs_pool_state": {
+      "status": "success",
+      "result_count": 0
+    },
+    "zfs_dataset_read": {
+      "status": "success",
+      "result_count": 0
+    },
+    "zfs_dataset_write": {
+      "status": "success",
+      "result_count": 0
+    },
+    "prom_retrans_ratio": {
+      "status": "success",
+      "result_count": 42
+    }
+  },
+  "mapping_usable": true
+}

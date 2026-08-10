@@ -1,0 +1,73 @@
+{
+  "metrics": {
+    "n_nodes": 5309,
+    "miner_hit_rate@1": 0.0037671877943115466,
+    "operator_hit_rate@1": 0.0030137502354492373,
+    "miner_hit_rate@3": 0.01054812582407233,
+    "operator_hit_rate@3": 0.017705782633264267,
+    "miner_realized_coverage": 0.003955547184027124,
+    "operator_realized_coverage": 0.0033904690148803917,
+    "miner_realized_regret": 0.03883855211582127,
+    "operator_realized_regret": 1.0535941553673696,
+    "miner_value_capture": 0.9611614478841788,
+    "operator_value_capture": -0.053594155367369604,
+    "baseline": {
+      "baseline_business": "10000182",
+      "n_nodes": 5309,
+      "miner_hit_rate@1": 0.04143906573742701,
+      "operator_hit_rate@1": 0.03315125258994161,
+      "miner_realized_coverage": 0.14258805801469204,
+      "operator_realized_coverage": 0.14258805801469204,
+      "miner_realized_regret": 0.4042612876984155,
+      "operator_realized_regret": 66050.7166936611
+    },
+    "split_day": "2026-07-05",
+    "min_business_support": 50
+  },
+  "diagnostics": {
+    "generated_at": "2026-08-05 18:07:49",
+    "window": "[online_day, online_day + 6]",
+    "online_source_counts": {
+      "first_appearance": 202483
+    },
+    "training_split": "online_day < 2026-07-05 vs >= 2026-07-05",
+    "sample": "5% deterministic node sample",
+    "outcome_rows": 202483,
+    "merged_rows": 202326,
+    "train_rows": 180645,
+    "test_rows": 20099,
+    "train_nodes": 57565,
+    "test_nodes": 5309,
+    "n_businesses_total": 126,
+    "n_candidate_businesses": 69,
+    "attribute_nodes": 63108,
+    "attribute_match_rate": 0.99924,
+    "attribute_snapshot_violations": 0,
+    "attribute_missing_feature_cells": 253690,
+    "zero_outcome_rows": 20723,
+    "zero_outcome_nodes": 4265,
+    "features": [
+      "vendorid",
+      "deliverytype",
+      "resourcetype",
+      "dialtype",
+      "nattype",
+      "scheduleisps",
+      "regsource",
+      "customermode",
+      "province",
+      "isp",
+      "city",
+      "device_type",
+      "arch_type",
+      "isvm",
+      "qoskiller_status",
+      "bw"
+    ],
+    "target_miner": "cum_cost_7d",
+    "target_operator": "(cum_revenue_7d - cum_cost_7d)",
+    "attribute_snapshot_rule": "latest node_join snapshot not later than online_day",
+    "realized_regret_scope": "conditional on recommended business being observed for the test node",
+    "elapsed_sec": 19.5
+  }
+}
