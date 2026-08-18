@@ -1,0 +1,4 @@
+interface:
+  display_name: "Superset SQL 查询"
+  short_description: "把业务需求翻成 SQL，在 Superset SQL Lab 上执行并导出结果。"
+  default_prompt: "使用 $superset-sql-query 把业务需求翻成可执行 SQL，在 Superset SQL Lab 上优先查询 jarvis.node_analysis_data 和 jarvis.node_join，必要时导出 CSV/JSON，并用中文简洁总结结果。"

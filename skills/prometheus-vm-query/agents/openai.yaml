@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prometheus VM Query"
+  short_description: "Query VictoriaMetrics/Prometheus safely"
+  default_prompt: "Use $prometheus-vm-query to query VictoriaMetrics metrics and export the results."
