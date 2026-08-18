@@ -1,0 +1,559 @@
+{"test.node_day_ops_wide_full": [
+    {
+      "field_name": "customerId",
+      "type": "bigint",
+      "allow_null": false,
+      "description": "客户Id"
+    },
+    {
+      "field_name": "day",
+      "type": "date",
+      "allow_null": false,
+      "description": "日期，格式：2006-01-01"
+    },
+    {
+      "field_name": "nodeId",
+      "type": "varchar(64)",
+      "allow_null": false,
+      "description": "节点Id"
+    },
+    {
+      "field_name": "analyzePeak95",
+      "type": "bigint",
+      "allow_null": true,
+      "description": "分析95峰值"
+    },
+    {
+      "field_name": "baseInfo_channelId",
+      "type": "bigint",
+      "allow_null": true,
+      "description": "基础信息-渠道ID"
+    },
+    {
+      "field_name": "baseInfo_hostNodeId",
+      "type": "varchar(64)",
+      "allow_null": true,
+      "description": "基础信息-宿主节点ID"
+    },
+    {
+      "field_name": "baseInfo_signatoryId",
+      "type": "bigint",
+      "allow_null": true,
+      "description": "基础信息-签约方ID"
+    },
+    {
+      "field_name": "baseInfo_bandwidth",
+      "type": "decimal(38,9)",
+      "allow_null": true,
+      "description": "基础信息-带宽"
+    },
+    {
+      "field_name": "buildBandwidth",
+      "type": "decimal(38,9)",
+      "allow_null": true,
+      "description": "原始建设带宽，单位：Mbps"
+    },
+    {
+      "field_name": "city",
+      "type": "varchar(256)",
+      "allow_null": true,
+      "description": "城市"
+    },
+    {
+      "field_name": "cost_guaranteedRate",
+      "type": "decimal(38,9)",
+      "allow_null": true,
+      "description": "成本-保底比例"
+    },
+    {
+      "field_name": "cost_priceItemId",
+      "type": "varchar(64)",
+      "allow_null": true,
+      "description": "成本-价格项ID"
+    },
+    {
+      "field_name": "cost_priceItemName",
+      "type": "varchar(128)",
+      "allow_null": true,
+      "description": "成本-价格项名称"
+    },
+    {
+      "field_name": "cost_priceType",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "成本-价格类型"
+    },
+    {
+      "field_name": "cost_price",
+      "type": "decimal(18,4)",
+      "allow_null": true,
+      "description": "成本-单价"
+    },
+    {
+      "field_name": "cost_priceAfterBonus",
+      "type": "decimal(18,4)",
+      "allow_null": true,
+      "description": "成本-优惠后价格"
+    },
+    {
+      "field_name": "cost_measure",
+      "type": "decimal(38,9)",
+      "allow_null": true,
+      "description": "成本-计量值"
+    },
+    {
+      "field_name": "cost_measureBeforeSla",
+      "type": "decimal(38,9)",
+      "allow_null": true,
+      "description": "成本-SLA前计量值"
+    },
+    {
+      "field_name": "cost_reverseMeasure",
+      "type": "decimal(38,9)",
+      "allow_null": true,
+      "description": "成本-反向计量值"
+    },
+    {
+      "field_name": "cost_original",
+      "type": "decimal(18,4)",
+      "allow_null": true,
+      "description": "成本-原始金额"
+    },
+    {
+      "field_name": "cost_bonus",
+      "type": "decimal(18,4)",
+      "allow_null": true,
+      "description": "成本-优惠金额"
+    },
+    {
+      "field_name": "cost_slaDeduction",
+      "type": "decimal(18,4)",
+      "allow_null": true,
+      "description": "成本-SLA扣款"
+    },
+    {
+      "field_name": "cost_tobaDeduction",
+      "type": "decimal(18,4)",
+      "allow_null": true,
+      "description": "成本-托管扣款"
+    },
+    {
+      "field_name": "cost_settlement",
+      "type": "decimal(18,4)",
+      "allow_null": true,
+      "description": "成本-结算金额"
+    },
+    {
+      "field_name": "cost_adjustmentAmount",
+      "type": "decimal(18,4)",
+      "allow_null": true,
+      "description": "成本-调整金额"
+    },
+    {
+      "field_name": "cost_finalAmount",
+      "type": "decimal(18,4)",
+      "allow_null": true,
+      "description": "成本-最终金额"
+    },
+    {
+      "field_name": "customerName",
+      "type": "varchar(128)",
+      "allow_null": true,
+      "description": "业务名称"
+    },
+    {
+      "field_name": "deliveryType",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "资源类型"
+    },
+    {
+      "field_name": "evening20To23Avg",
+      "type": "bigint",
+      "allow_null": true,
+      "description": "20-23点平均带宽"
+    },
+    {
+      "field_name": "eveningAvg",
+      "type": "bigint",
+      "allow_null": true,
+      "description": "晚间平均带宽"
+    },
+    {
+      "field_name": "eveningPeak95",
+      "type": "bigint",
+      "allow_null": true,
+      "description": "晚间95峰值"
+    },
+    {
+      "field_name": "isBanTransProv",
+      "type": "boolean",
+      "allow_null": true,
+      "description": "是否禁止跨省调度"
+    },
+    {
+      "field_name": "isp",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "运营商"
+    },
+    {
+      "field_name": "name",
+      "type": "varchar(128)",
+      "allow_null": true,
+      "description": "节点名称"
+    },
+    {
+      "field_name": "natType",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "网络类型"
+    },
+    {
+      "field_name": "nodeTags",
+      "type": "json",
+      "allow_null": true,
+      "description": "节点标签"
+    },
+    {
+      "field_name": "nodeType",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "节点类型"
+    },
+    {
+      "field_name": "os",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "操作系统"
+    },
+    {
+      "field_name": "peak95",
+      "type": "bigint",
+      "allow_null": true,
+      "description": "日95带宽，单位：bps"
+    },
+    {
+      "field_name": "peak95Ratio",
+      "type": "int",
+      "allow_null": true,
+      "description": "95峰值占比"
+    },
+    {
+      "field_name": "peak95Time",
+      "type": "datetime",
+      "allow_null": true,
+      "description": "日95时间"
+    },
+    {
+      "field_name": "peakMaxRatio",
+      "type": "int",
+      "allow_null": true,
+      "description": "最大峰值占比"
+    },
+    {
+      "field_name": "priceNumber",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "价格编号"
+    },
+    {
+      "field_name": "measureBase",
+      "type": "bigint",
+      "allow_null": true,
+      "description": "计量基数"
+    },
+    {
+      "field_name": "measureBaseDesc",
+      "type": "varchar(256)",
+      "allow_null": true,
+      "description": "计量基数描述"
+    },
+    {
+      "field_name": "measureCoefficient",
+      "type": "decimal(38,9)",
+      "allow_null": true,
+      "description": "计量系数"
+    },
+    {
+      "field_name": "profit_profitAmount",
+      "type": "decimal(18,4)",
+      "allow_null": true,
+      "description": "利润-利润额"
+    },
+    {
+      "field_name": "profit_profitRate",
+      "type": "decimal(18,6)",
+      "allow_null": true,
+      "description": "利润-利润率"
+    },
+    {
+      "field_name": "profit_estimatedProfitAmount",
+      "type": "decimal(18,4)",
+      "allow_null": true,
+      "description": "利润-预估利润额"
+    },
+    {
+      "field_name": "profit_estimatedProfitRate",
+      "type": "decimal(18,6)",
+      "allow_null": true,
+      "description": "利润-预估利润率"
+    },
+    {
+      "field_name": "idcId",
+      "type": "varchar(64)",
+      "allow_null": true,
+      "description": "机房Id"
+    },
+    {
+      "field_name": "idcName",
+      "type": "varchar(128)",
+      "allow_null": true,
+      "description": "机房名称"
+    },
+    {
+      "field_name": "idcBandwidth",
+      "type": "decimal(38,9)",
+      "allow_null": true,
+      "description": "机房建设带宽，单位：Mbps"
+    },
+    {
+      "field_name": "transProvRate",
+      "type": "decimal(38,9)",
+      "allow_null": true,
+      "description": "跨省调度比例"
+    },
+    {
+      "field_name": "isVm",
+      "type": "boolean",
+      "allow_null": true,
+      "description": "是否为虚拟机"
+    },
+    {
+      "field_name": "isCloudVm",
+      "type": "boolean",
+      "allow_null": true,
+      "description": "是否为云主机"
+    },
+    {
+      "field_name": "scheduleISPs",
+      "type": "json",
+      "allow_null": true,
+      "description": "实际业务调度的运营商"
+    },
+    {
+      "field_name": "settlePeriodType",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "结算周期类型"
+    },
+    {
+      "field_name": "province",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "省份"
+    },
+    {
+      "field_name": "purchaserName",
+      "type": "varchar(64)",
+      "allow_null": true,
+      "description": "采购员"
+    },
+    {
+      "field_name": "quantityEnd",
+      "type": "decimal(18,4)",
+      "allow_null": true,
+      "description": "阶梯数量上限"
+    },
+    {
+      "field_name": "quantityType",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "资源类型"
+    },
+    {
+      "field_name": "realISP",
+      "type": "varchar(64)",
+      "allow_null": true,
+      "description": "真实运营商"
+    },
+    {
+      "field_name": "resourceType",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "客户侧资源类型"
+    },
+    {
+      "field_name": "revenue_billItemId",
+      "type": "varchar(64)",
+      "allow_null": true,
+      "description": "收入-账单条目ID"
+    },
+    {
+      "field_name": "revenue_billItemBillDay",
+      "type": "int",
+      "allow_null": true,
+      "description": "收入-账单日"
+    },
+    {
+      "field_name": "revenue_guaranteedRate",
+      "type": "decimal(38,9)",
+      "allow_null": true,
+      "description": "收入-保底比例"
+    },
+    {
+      "field_name": "revenue_priceItemId",
+      "type": "varchar(64)",
+      "allow_null": true,
+      "description": "收入-价格项ID"
+    },
+    {
+      "field_name": "revenue_priceItemName",
+      "type": "varchar(128)",
+      "allow_null": true,
+      "description": "收入-价格项名称"
+    },
+    {
+      "field_name": "revenue_price",
+      "type": "decimal(18,4)",
+      "allow_null": true,
+      "description": "收入-单价"
+    },
+    {
+      "field_name": "revenue_measure",
+      "type": "decimal(38,9)",
+      "allow_null": true,
+      "description": "收入-计量值"
+    },
+    {
+      "field_name": "revenue_reverseMeasure",
+      "type": "decimal(38,9)",
+      "allow_null": true,
+      "description": "收入-反向计量值"
+    },
+    {
+      "field_name": "revenue_coefficientMeasure",
+      "type": "decimal(38,9)",
+      "allow_null": true,
+      "description": "收入-系数调整后计量值"
+    },
+    {
+      "field_name": "revenue_amount",
+      "type": "decimal(18,4)",
+      "allow_null": true,
+      "description": "收入-金额"
+    },
+    {
+      "field_name": "revenue_finalAmount",
+      "type": "decimal(18,4)",
+      "allow_null": true,
+      "description": "收入-最终金额"
+    },
+    {
+      "field_name": "revenue_estimatedFinalAmount",
+      "type": "decimal(18,4)",
+      "allow_null": true,
+      "description": "收入-预估最终金额"
+    },
+    {
+      "field_name": "signatoryName",
+      "type": "varchar(128)",
+      "allow_null": true,
+      "description": "客户名称"
+    },
+    {
+      "field_name": "snapshotTime",
+      "type": "datetime",
+      "allow_null": true,
+      "description": "快照时间"
+    },
+    {
+      "field_name": "stage",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "业务状态"
+    },
+    {
+      "field_name": "stairType",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "阶梯类型"
+    },
+    {
+      "field_name": "stairs",
+      "type": "json",
+      "allow_null": true,
+      "description": "阶梯"
+    },
+    {
+      "field_name": "state",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "在线状态"
+    },
+    {
+      "field_name": "tcpNatType",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "TCP NAT 类型"
+    },
+    {
+      "field_name": "udpNatType",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "UDP NAT 类型"
+    },
+    {
+      "field_name": "unEveningAvg",
+      "type": "bigint",
+      "allow_null": true,
+      "description": "非晚间平均带宽"
+    },
+    {
+      "field_name": "updatedTime",
+      "type": "datetime",
+      "allow_null": true,
+      "description": "更新时间"
+    },
+    {
+      "field_name": "vendorId",
+      "type": "bigint",
+      "allow_null": true,
+      "description": "供应商Id"
+    },
+    {
+      "field_name": "vendorSuggestCustomers",
+      "type": "json",
+      "allow_null": true,
+      "description": "矿主期望业务"
+    },
+    {
+      "field_name": "vendorSuggestCustomersName",
+      "type": "json",
+      "allow_null": true,
+      "description": "矿主期望业务名称"
+    },
+    {
+      "field_name": "virtualCustomers",
+      "type": "json",
+      "allow_null": true,
+      "description": "虚拟业务"
+    },
+    {
+      "field_name": "virtualCustomersName",
+      "type": "json",
+      "allow_null": true,
+      "description": "虚拟业务名称"
+    },
+    {
+      "field_name": "webPort",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "业务端口"
+    },
+    {
+      "field_name": "webPortResult",
+      "type": "varchar(32)",
+      "allow_null": true,
+      "description": "业务端口结果"
+    }]}

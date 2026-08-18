@@ -1,0 +1,4 @@
+interface:
+  display_name: "节点日宽表查询"
+  short_description: "查询 test.node_day_ops_wide_full 节点日业务数据"
+  default_prompt: "使用 $superset-node-day-ops-wide-query 查询 test.node_day_ops_wide_full 的节点日数据。"
