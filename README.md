@@ -1,16 +1,247 @@
 # 多业务节点最佳业务推荐
 
-本项目使用真实节点业务数据，基于节点上线前可确定的固有属性，预测节点上线后 7 天内更适合的业务：
+本项目使用真实节点业务数据，基于节点画像和日粒度业务收益，推荐大节点更适合的主流业务：
 
-- 矿主最佳业务：7 天累计成本最高的业务。
-- 运营最佳业务：7 天累计收入减累计成本最高的业务。
+- 矿主目标：单日成本/矿主收益表现更好的业务。
+- 运营目标：单日收入减成本后的平台利润更好的业务。
+- 当前主目标：矿主收益和平台利润各占 50%。
+
+## 当前闭环入口
+
+V1 用于历史节点收益闭环和存量纠偏，V2 用于新节点画像泛化推荐。
+
+```bash
+# 历史收益闭环：构建推荐、当前业务推断、纠偏候选
+python3 v1_recommendation_pipeline.py build \
+  --business-map v1_business_name_map_enriched.csv
+python3 v1_recommendation_pipeline.py check
+python3 v1_recommendation_pipeline.py audit-node <node_id> --json
+
+# 新节点泛化推荐：输入 node_id 输出 Top3 + 原因 + 风险
+python3 v2_ranking_model.py build \
+  --business-map v1_business_name_map_enriched.csv
+python3 v2_ranking_model.py check
+python3 v2_ranking_model.py recommend-node <node_id> --json
+
+# 批量节点推荐
+python3 v2_ranking_model.py recommend-batch \
+  --node-ids <node_id_1>,<node_id_2> \
+  --json
+
+# 单条件/多条件筛选节点后逐节点推荐
+python3 v2_ranking_model.py recommend-filter \
+  --where province=安徽 \
+  --where isp=移动 \
+  --limit 20
+
+# 条件组合汇总：省份+运营商 -> 其他画像组合 -> 推荐业务
+python3 v2_ranking_model.py recommend-segments \
+  --where province=安徽 \
+  --where isp=移动 \
+  --group-by city,resourcetype,nattype,dialtype,bw_bucket \
+  --min-nodes 2 \
+  --limit 20
+
+# 前端条件推荐报告：不依赖 node_id，导出条件组合 -> Top3 业务
+python3 v2_ranking_model.py export-condition-report \
+  --min-nodes 10
+```
+
+大节点专用数据和模型已单独输出，后续大节点分析请优先使用这组文件，避免小盒子画像混入：
+
+```bash
+# 大节点单/多条件推荐
+python3 v2_ranking_model.py recommend-filter \
+  --where node_size_type=large_node \
+  --nodes multibusiness_nodes_large.csv \
+  --model v2_large_outputs/v2_ranking_model.json \
+  --limit 20
+
+# 大节点条件推荐报告
+python3 v2_ranking_model.py export-condition-report \
+  --nodes multibusiness_nodes_large.csv \
+  --model v2_large_outputs/v2_ranking_model.json \
+  --recommendations v2_large_outputs/v2_node_recommendations.csv \
+  --min-nodes 1 \
+  --output-csv v2_frontend_condition_business_report_large.csv \
+  --output-json v2_frontend_condition_business_report_large.json \
+  --output-data-js v2_frontend_condition_business_report_large_data.js
+```
+
+当前已生成的 V2 正式产物：
+
+```text
+v2_ranking_model.json
+v2_node_recommendations.csv
+v2_model_metrics.json
+v2_frontend_condition_business_report.html
+v2_frontend_condition_business_report.csv
+v2_frontend_condition_business_report.json
+v2_frontend_condition_business_report_data.js
+```
+
+大节点专用产物：
+
+```text
+multibusiness_nodes_large.csv
+v1_training_pairs_large.csv
+v2_large_outputs/v2_ranking_model.json
+v2_large_outputs/v2_node_recommendations.csv
+v2_large_outputs/v2_model_metrics.json
+v2_frontend_condition_business_report_large.html
+v2_frontend_condition_business_report_large.csv
+v2_frontend_condition_business_report_large.json
+v2_frontend_condition_business_report_large_data.js
+```
+
+最近一个月大节点日粒度产物已输出到 `recent_month_large_1d/`，训练窗口为 `sample_day 2026-08-02` 至 `2026-09-01`。这版会先按 Superset 最新节点快照分片找大节点候选，再用项目内 `node_size_type=large_node` 口径二次过滤，避免小盒子混入：
+
+```bash
+python3 -u build_recent_large_training.py \
+  --output-dir recent_month_large_1d \
+  --outcome-window-days 1 \
+  --workers 4 \
+  --candidate-chunk-size 800 \
+  --min-business-support 1
+
+python3 v2_ranking_model.py recommend-filter \
+  --where province=江苏 \
+  --where isp=电信 \
+  --nodes recent_month_large_1d/multibusiness_nodes_large_recent_1m.csv \
+  --model recent_month_large_1d/v2_large_recent_outputs/v2_ranking_model.json \
+  --limit 20
+```
+
+最近一个月大节点 1d 关键产物：
+
+```text
+recent_month_large_1d/multibusiness_nodes_large_recent_1m.csv
+recent_month_large_1d/multibusiness_outcomes_large_recent_1m.csv
+recent_month_large_1d/v1_training_pairs_large_recent_1m.csv
+recent_month_large_1d/v2_large_recent_outputs/v2_ranking_model.json
+recent_month_large_1d/v2_large_recent_outputs/v2_node_recommendations.csv
+recent_month_large_1d/v2_large_recent_outputs/v2_model_metrics.json
+recent_month_large_1d/v2_frontend_condition_business_report_large_recent_1m.html
+recent_month_large_1d/recent_large_training_summary.json
+```
+
+主流业务 allowlist 已固化到 `mainstream_business_allowlist.csv`。当前口径包含字节、百度、优酷、快手、腾讯、爱奇艺、B站、七牛真实/虚拟业务，以及从 2026-08 宽表和客户清单审计补充的主流业务变体。虚拟/签约业务绑定审计结果记录在 `business_binding_audit/`，七牛手工确认绑定关系记录在 `business_virtual_binding_map.csv`。使用主流业务版入口：
+
+```bash
+python3 -u build_mainstream_large_training.py \
+  --source-dir recent_month_large_1d \
+  --output-dir recent_month_large_mainstream_1d \
+  --min-business-support 1
+
+python3 v2_ranking_model.py recommend-node <node_id> \
+  --nodes recent_month_large_mainstream_1d/multibusiness_nodes_large_mainstream_recent_1m.csv \
+  --model recent_month_large_mainstream_1d/v2_large_mainstream_outputs/v2_ranking_model.json \
+  --json
+
+# 现网重匹配：存量节点先看当前真实收益，模型推荐只作为辅助
+python3 -u scan_current_non_idc_large_mismatches.py
+
+# 主流业务完整统计：自动读取最新现网扫描；非主流业务只记录排除量
+python3 -u build_mainstream_data_statistics.py
+```
+
+主流业务版关键产物：
+
+```text
+mainstream_business_allowlist.csv
+business_virtual_binding_map.csv
+business_binding_audit/business_virtual_binding_map_full_audit_202608.csv
+business_binding_audit/mainstream_allowlist_expansion_selected_202608.csv
+business_binding_audit/mainstream_allowlist_expansion_excluded_202608.csv
+recent_month_large_mainstream_1d/multibusiness_outcomes_large_mainstream_recent_1m.csv
+recent_month_large_mainstream_1d/v1_training_pairs_large_mainstream_recent_1m.csv
+recent_month_large_mainstream_1d/v2_large_mainstream_outputs/v2_ranking_model.json
+recent_month_large_mainstream_1d/v2_large_mainstream_outputs/v2_node_recommendations.csv
+recent_month_large_mainstream_1d/v2_frontend_condition_business_report_large_mainstream_recent_1m.html
+recent_month_large_mainstream_1d/mainstream_large_training_summary.json
+current_non_idc_large_scan/current_non_idc_large_recommendations_20260902.csv
+current_non_idc_large_scan/current_non_idc_large_mismatch_candidates_20260902.csv
+mainstream_data_statistics/mainstream_data_statistics_report_20260902.md
+mainstream_data_statistics/mainstream_data_statistics_summary_20260902.json
+```
+
+V2 主流业务大节点 1d 离线验证结果：`hit@1=0.2760`，`hit@3=0.5571`，`nDCG@3=0.4632`。完整说明见 `业务推荐逻辑与训练说明.md`、`V1_RECOMMENDATION_PIPELINE.md` 和 `V2_MODEL_AND_RISK_PLAN.md`。
+
+单位带宽收益率模型已作为对照版输出到 `recent_month_large_mainstream_1d_unit_bw/`，目标为 `cost/profit ÷ effective_bandwidth_mbps`，V2 排序权重更偏 `expected_score`：
+
+```bash
+python3 -u build_mainstream_large_training.py \
+  --source-dir recent_month_large_1d \
+  --output-dir recent_month_large_mainstream_1d_unit_bw \
+  --target-mode unit_bandwidth \
+  --min-business-support 1
+
+python3 -u scan_current_non_idc_large_mismatches.py \
+  --output-dir current_non_idc_large_scan_unit_bw \
+  --model recent_month_large_mainstream_1d_unit_bw/v2_large_mainstream_outputs/v2_ranking_model.json
+```
+
+收益率版 V2 离线验证结果：`hit@1=0.2600`，`hit@3=0.5218`，`nDCG@3=0.3730`，`observed_regret=0.0397`。该版本先作为人工复核和策略对照，不直接覆盖默认 1d 模型。
+
+收益率版前端收益报告可直接生成并打开：
+
+```bash
+python3 -u build_business_recommendation_profit_report.py
+open business_recommendation_profit_report_unit_bw.html
+```
+
+报告产物：
+
+```text
+business_recommendation_profit_report_unit_bw.html
+business_recommendation_profit_report_unit_bw.csv
+business_recommendation_profit_report_unit_bw_data.js
+```
+
+含调度字段版已纳入 `scheduleisps`、`analysis_transprovrate`、`join_isbantransprov`、`join_isipv6schedule`，用于区分调度运营商、跨省比例、禁跨省和 IPv6 调度能力：
+
+模型会进一步派生 `network_schedule_type`：`本网本省`、`本网出省`、`异网本省`、`异网出省`。`scheduleISPs` 为空表示本网，并归一为节点自身运营商；`transProvRate` 为空或 0 表示本省、100 表示出省，1 至 99 视为异常值并从训练中剔除。完整 `scheduleISPs` 同时包含本网和异网时仍保留为混合网络。
+
+当前默认现网扫描使用：
+
+```bash
+python3 scan_current_non_idc_large_mismatches.py
+python3 build_business_recommendation_profit_report.py
+```
+
+默认模型目录为 `recent_month_large_mainstream_1d_unit_bw_network_scope/`，默认扫描目录为 `current_non_idc_large_scan_network_scope/`。
+
+```bash
+python3 -u build_mainstream_large_training.py \
+  --source-dir recent_month_large_1d \
+  --output-dir recent_month_large_mainstream_1d_unit_bw_sched \
+  --target-mode unit_bandwidth \
+  --min-business-support 1
+
+python3 -u scan_current_non_idc_large_mismatches.py \
+  --output-dir current_non_idc_large_scan_unit_bw_sched \
+  --model recent_month_large_mainstream_1d_unit_bw_sched/v2_large_mainstream_outputs/v2_ranking_model.json
+```
+
+新版现网报告：
+
+```text
+business_recommendation_profit_report_unit_bw_sched.html
+business_recommendation_profit_report_unit_bw_sched.csv
+current_non_idc_large_scan_unit_bw_sched/current_condition_business_report_unit_bw_sched_20260902.html
+current_non_idc_large_scan_unit_bw_sched/current_condition_business_report_unit_bw_sched_20260902.csv
+```
+
+调度字段版 V2 离线验证结果：`hit@1=0.2676`，`hit@3=0.5271`，`nDCG@3=0.3765`，`observed_regret=0.0392`。
 
 ## 数据口径
 
 - 业务数据：Superset 数据库 `yzh-starrocks` 的 `test.node_day_ops_wide_full`。
-- 节点属性：Superset 数据库 `jf-jarvis` 的 `jarvis.node_analysis_data`、`jarvis.node_join` 和 `jarvis.dial_acc`。
+- 业务名称：优先使用 `node_day_ops_wide` 中非空 `customerName`，并用 Superset 验收规则客户清单补齐；虚拟业务会结合 `signId/signName`、`vendorSuggestCustomersName`、`virtualCustomersName` 做审计，输出为 `v1_business_name_map_enriched.csv` 和 `business_binding_audit/`。
+- 节点属性：Superset 数据库 `jf-jarvis` 的 `jarvis.node_analysis_data`、`jarvis.node_join` 和 `jarvis.dial_acc`；调度字段来自 `node_join.nodestaticinfo.nominalinfo.scheduleisps`、`node_analysis_data.transprovrate`、`node_join.nodestaticinfo.nominalinfo.isbantransprov` 和 `isipv6schedule`。
 - 运行健康指标：VictoriaMetrics/Prometheus，用于健康准入，不进入收益预测模型。
-- 历史范围：`2026-03-16` 至 `2026-08-04`。
+- 存量纠偏：取消“历史分段最优覆盖数”主导切换的口径；当前业务真实利润和单位利润优于推荐目标业务现网中位值时，保留当前业务。
+- 当前 1d 历史范围：`2026-08-02` 至 `2026-09-01`。
 - 节点筛选：至少运行 3 个不同业务，业务首次出现日期至少分布在 3 天，且至少有一条 `state='online'` 记录。
 - 当前样本：节点 ID 后缀 `00` 至 `0c`，约 5.08%，不是全量节点推断。
 - 属性时间：业务首次出现日前一天的最新可用小时，避免把业务启动后的观测泄漏到目标窗口。
@@ -63,9 +294,64 @@
 - `多业务节点最佳业务重建报告.md`：完整分析报告。
 - `multibusiness_metrics.json`：机器可读指标、字段边界和健康规则。
 - `multibusiness_nodes.csv`：节点属性快照和健康观测字段。
-- `multibusiness_outcomes.csv`：节点-业务 7 天成本、收入、利润结果。
+- `multibusiness_outcomes.csv`：旧版节点-业务 7 天成本、收入、利润结果；当前主流大节点模型优先使用 `recent_month_large_mainstream_1d/` 下的日粒度数据。
 - `multibusiness_recommendations.csv`：训练集/测试集推荐结果和健康阻断理由。
 - `multibusiness_eligible_pairs.csv`：合格节点-业务首次出现明细。
 - `multibusiness_prometheus_probe.json`：Prometheus 指标探查结果。
 
 # machine-test
+
+## V3 日粒度主流业务模型（当前口径）
+
+V3 不再把同一节点同一天的多个 `customerId` 当成可比较业务。当天业务由
+`state='online' AND stage='inService'` 的主流业务行确定；七牛系列虚拟 ID
+统一为 `10000280 / 七牛CDN-ZJ月95`。同日仍有多个有效主流业务、存在未归属
+金额或建设带宽不一致时，整天不进训练并写入审计表。
+
+网络调度口径固定为：
+
+```text
+scheduleISPs 为空 = 调度到节点自身运营商（本网）
+transProvRate 为空或 0 = 本省
+transProvRate 100 = 出省
+transProvRate 1~99 = 异常值，整节点日不进训练并写入审计表
+```
+
+精确运营商路径会保留，例如 `移动->电信` 与 `移动->联通` 是两个不同分段；
+空 `scheduleISPs` 会先归一为节点自身运营商，再与显式填写本网的记录合并。
+
+收益目标固定为：
+
+```text
+矿主单位收益 = cost_finalAmount / buildBandwidth
+平台单位利润 = (revenue_finalAmount - cost_finalAmount) / buildBandwidth
+综合分 = 0.5 * 归一化矿主单位收益 + 0.5 * 归一化平台单位利润
+```
+
+V2 排序只使用期望综合收益，旧版 `source_rate/champion/expected_best_rate`
+投票权重均为 0。`hit@1/hit@3` 只表示推荐是否等于历史实际选择，不代表因果上的
+最佳业务准确率。
+
+完整重建：
+
+```bash
+python3 -u build_v3_daily_business_training.py \
+  --output-dir recent_month_large_mainstream_v3_daily \
+  --min-business-support 30
+
+python3 -u scan_current_non_idc_large_mismatches.py \
+  --output-dir current_non_idc_large_scan_v3_daily \
+  --model recent_month_large_mainstream_v3_daily/v2_large_mainstream_outputs/v2_ranking_model.json
+```
+
+当前关键产物：
+
+```text
+recent_month_large_mainstream_v3_daily/v3_daily_training_summary.json
+recent_month_large_mainstream_v3_daily/node_day_sampling_audit_v3.csv
+recent_month_large_mainstream_v3_daily/multibusiness_outcomes_large_mainstream_v3_daily.csv
+recent_month_large_mainstream_v3_daily/v2_large_mainstream_outputs/v2_ranking_model.json
+recent_month_large_mainstream_v3_daily/business_recommendation_profit_report_v3_daily.html
+current_non_idc_large_scan_v3_daily/current_business_sampling_audit_20260901_20260901.csv
+current_non_idc_large_scan_v3_daily/current_non_idc_large_mismatch_candidates_20260902.csv
+```

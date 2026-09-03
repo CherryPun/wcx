@@ -6,3 +6,40 @@ __pycache__/
 *.log
 .env
 *.env
+.DS_Store
+
+# Local training outputs and fetched source data
+business_binding_audit/
+current_non_idc_large_scan*/
+mainstream_data_statistics/
+recent_month_large*/
+v1_large_outputs/
+v2_large_outputs/
+
+# Generated recommendation artifacts
+business_recommendation_profit_report_*.csv
+business_recommendation_profit_report_*.html
+business_recommendation_profit_report_*_data.js
+v1_business_risk_profile.csv
+v1_business_score_model.json
+v1_existing_node_correction_candidates.csv
+v1_model_metrics.json
+v1_node_recommendations.csv
+v1_training_pairs*.csv
+v2_frontend_condition_business_report*.csv
+v2_frontend_condition_business_report*.json
+v2_frontend_condition_business_report*_data.js
+v2_model_metrics.json
+v2_node_recommendations*.csv
+v2_ranking_model.json
+
+# One-off local exports
+multibusiness_nodes_large.csv
+query_sample.csv
+recommendations_for_review.csv
+recommendations_with_node_attrs.csv
+superset_*_raw.csv
+superset_customer_columns.csv
+superset_probe_missing_business_names.csv
+v1_business_name_map.csv
+v1_business_name_missing_*.csv

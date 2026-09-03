@@ -1,0 +1,1085 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>条件业务推荐报告</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --panel-2: #f0f4f8;
+      --text: #17202a;
+      --muted: #647181;
+      --line: #d9e0e8;
+      --blue: #2563eb;
+      --blue-2: #dbeafe;
+      --green: #15803d;
+      --green-2: #dcfce7;
+      --amber: #b45309;
+      --amber-2: #fef3c7;
+      --red: #b91c1c;
+      --red-2: #fee2e2;
+      --slate: #334155;
+      --slate-2: #e2e8f0;
+      --shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+    }
+
+    .topbar {
+      background: #0f172a;
+      color: #fff;
+      padding: 18px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .title-block {
+      min-width: 0;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      margin-top: 4px;
+      color: #cbd5e1;
+      font-size: 13px;
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: var(--blue);
+      color: #fff;
+      padding: 9px 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .btn.secondary {
+      background: transparent;
+      border-color: #64748b;
+      color: #e2e8f0;
+    }
+
+    .btn:hover {
+      filter: brightness(0.96);
+    }
+
+    .filters {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(246, 247, 249, 0.96);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+      padding: 14px 28px;
+    }
+
+    .filter-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(130px, 1fr));
+      gap: 10px;
+      align-items: end;
+    }
+
+    .field {
+      display: grid;
+      gap: 5px;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+      padding: 8px 10px;
+    }
+
+    .field.search {
+      grid-column: span 2;
+    }
+
+    main {
+      padding: 22px 28px 32px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(140px, 1fr));
+      gap: 12px;
+    }
+
+    .metric {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      box-shadow: var(--shadow);
+      min-height: 92px;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric .value {
+      margin-top: 7px;
+      font-size: 26px;
+      font-weight: 750;
+      color: var(--slate);
+    }
+
+    .metric .note {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      min-height: 18px;
+    }
+
+    .visual-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      min-width: 0;
+    }
+
+    .panel-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .panel-meta {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .bars {
+      padding: 12px 16px 16px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: minmax(140px, 220px) 1fr minmax(54px, auto);
+      align-items: center;
+      gap: 10px;
+      min-height: 28px;
+    }
+
+    .bar-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--slate);
+    }
+
+    .bar-track {
+      height: 10px;
+      background: var(--panel-2);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      width: 0;
+      background: var(--blue);
+      border-radius: inherit;
+    }
+
+    .bar-value {
+      text-align: right;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .table-shell {
+      overflow: hidden;
+    }
+
+    .table-scroll {
+      overflow: auto;
+      max-height: 660px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1420px;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f8fafc;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    tbody tr:hover {
+      background: #f8fafc;
+    }
+
+    .condition-cell {
+      max-width: 360px;
+      color: var(--slate);
+      word-break: break-word;
+    }
+
+    .business {
+      display: grid;
+      gap: 3px;
+      min-width: 180px;
+    }
+
+    .business-name {
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .business-name.missing {
+      color: var(--amber);
+    }
+
+    .business-id {
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .num {
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .badge.high {
+      background: var(--green-2);
+      color: var(--green);
+    }
+
+    .badge.medium {
+      background: var(--amber-2);
+      color: var(--amber);
+    }
+
+    .badge.low {
+      background: var(--slate-2);
+      color: var(--slate);
+    }
+
+    .risk.low {
+      color: var(--green);
+    }
+
+    .risk.medium {
+      color: var(--amber);
+    }
+
+    .risk.high {
+      color: var(--red);
+    }
+
+    .pager {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-top: 1px solid var(--line);
+      flex-wrap: wrap;
+    }
+
+    .pager-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .pager button {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 8px;
+      min-width: 38px;
+      min-height: 34px;
+      cursor: pointer;
+    }
+
+    .pager button:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+
+    .empty {
+      padding: 34px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    @media (max-width: 1180px) {
+      .filter-grid,
+      .summary-grid,
+      .visual-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .field.search {
+        grid-column: span 2;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 16px;
+      }
+
+      .filters,
+      main {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+
+      .filter-grid,
+      .summary-grid,
+      .visual-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .field.search {
+        grid-column: span 1;
+      }
+
+      h1 {
+        font-size: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="title-block">
+        <h1>条件业务推荐报告</h1>
+        <div class="subtitle" id="dataSubtitle">加载中</div>
+      </div>
+      <div class="top-actions">
+        <button class="btn secondary" id="resetBtn" type="button">重置筛选</button>
+        <button class="btn" id="downloadBtn" type="button">下载当前结果</button>
+      </div>
+    </header>
+
+    <section class="filters" aria-label="筛选">
+      <div class="filter-grid">
+        <div class="field">
+          <label for="segmentFilter">条件粒度</label>
+          <select id="segmentFilter"></select>
+        </div>
+        <div class="field">
+          <label for="provinceFilter">省份</label>
+          <select id="provinceFilter"></select>
+        </div>
+        <div class="field">
+          <label for="ispFilter">运营商</label>
+          <select id="ispFilter"></select>
+        </div>
+        <div class="field">
+          <label for="resourceFilter">资源类型</label>
+          <select id="resourceFilter"></select>
+        </div>
+        <div class="field">
+          <label for="confidenceFilter">置信度</label>
+          <select id="confidenceFilter"></select>
+        </div>
+        <div class="field">
+          <label for="riskFilter">Top1 高风险率</label>
+          <select id="riskFilter">
+            <option value="">全部</option>
+            <option value="low">低于 20%</option>
+            <option value="medium">20% 到 50%</option>
+            <option value="high">高于 50%</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="businessFilter">Top1 业务</label>
+          <select id="businessFilter"></select>
+        </div>
+        <div class="field">
+          <label for="minNodesInput">最小样本量</label>
+          <input id="minNodesInput" type="number" min="1" step="1" value="10">
+        </div>
+        <div class="field">
+          <label for="sortFilter">排序</label>
+          <select id="sortFilter">
+            <option value="node_count">样本量</option>
+            <option value="confidence">置信度</option>
+            <option value="vote_share_top1">Top1 投票占比</option>
+            <option value="risk">Top1 高风险率</option>
+          </select>
+        </div>
+        <div class="field search">
+          <label for="searchInput">搜索</label>
+          <input id="searchInput" type="search" placeholder="省份、运营商、业务 ID、业务名称、条件文本">
+        </div>
+      </div>
+    </section>
+
+    <main>
+      <section class="summary-grid" aria-label="总览">
+        <div class="metric">
+          <div class="label">条件组合</div>
+          <div class="value" id="metricRows">0</div>
+          <div class="note">当前筛选结果</div>
+        </div>
+        <div class="metric">
+          <div class="label">覆盖样本量</div>
+          <div class="value" id="metricNodes">0</div>
+          <div class="note">按组合汇总，存在粒度重叠</div>
+        </div>
+        <div class="metric">
+          <div class="label">高置信组合</div>
+          <div class="value" id="metricHighConfidence">0</div>
+          <div class="note">confidence_level=high</div>
+        </div>
+        <div class="metric">
+          <div class="label">低风险 Top1</div>
+          <div class="value" id="metricLowRisk">0</div>
+          <div class="note">Top1 高风险率低于 20%</div>
+        </div>
+        <div class="metric">
+          <div class="label">主要 Top1 业务</div>
+          <div class="value" id="metricMainBusiness">-</div>
+          <div class="note" id="metricMainBusinessNote"></div>
+        </div>
+      </section>
+
+      <section class="visual-grid" aria-label="分布">
+        <div class="panel">
+          <div class="panel-header">
+            <h2 class="panel-title">Top1 业务分布</h2>
+            <div class="panel-meta">按条件组合数</div>
+          </div>
+          <div class="bars" id="businessBars"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <h2 class="panel-title">条件粒度分布</h2>
+            <div class="panel-meta">按条件组合数</div>
+          </div>
+          <div class="bars" id="segmentBars"></div>
+        </div>
+      </section>
+
+      <section class="panel table-shell" aria-label="条件推荐表">
+        <div class="panel-header">
+          <h2 class="panel-title">条件组合明细</h2>
+          <div class="panel-meta" id="tableMeta">0 条</div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th data-sort="condition_text">条件</th>
+                <th data-sort="segment_level">粒度</th>
+                <th data-sort="node_count">样本量</th>
+                <th data-sort="confidence_level">置信度</th>
+                <th data-sort="business_top1">Top1 业务</th>
+                <th data-sort="vote_share_top1">Top1 投票</th>
+                <th data-sort="top1_share_top1">Top1 占比</th>
+                <th data-sort="high_risk_rate_top1">Top1 高风险</th>
+                <th>Top2</th>
+                <th>Top3</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+          <div class="empty" id="emptyState" hidden>没有匹配的条件组合</div>
+        </div>
+        <div class="pager">
+          <div id="pageInfo">0 / 0</div>
+          <div class="pager-controls">
+            <button id="prevBtn" type="button">上一页</button>
+            <select id="pageSize">
+              <option value="25">25 条</option>
+              <option value="50" selected>50 条</option>
+              <option value="100">100 条</option>
+              <option value="250">250 条</option>
+            </select>
+            <button id="nextBtn" type="button">下一页</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="v2_frontend_condition_business_report_data.js"></script>
+  <script>
+    const report = window.CONDITION_REPORT_DATA || { records: [], rows: 0, segment_levels: [] };
+    const records = (report.records || []).map(normalizeRecord);
+    const UNKNOWN_BUSINESS_NAME = '未命名业务';
+    const state = {
+      page: 1,
+      pageSize: 50,
+      sortKey: 'node_count',
+      sortDir: 'desc',
+      filtered: records.slice()
+    };
+
+    const els = {
+      dataSubtitle: document.getElementById('dataSubtitle'),
+      segmentFilter: document.getElementById('segmentFilter'),
+      provinceFilter: document.getElementById('provinceFilter'),
+      ispFilter: document.getElementById('ispFilter'),
+      resourceFilter: document.getElementById('resourceFilter'),
+      confidenceFilter: document.getElementById('confidenceFilter'),
+      riskFilter: document.getElementById('riskFilter'),
+      businessFilter: document.getElementById('businessFilter'),
+      minNodesInput: document.getElementById('minNodesInput'),
+      sortFilter: document.getElementById('sortFilter'),
+      searchInput: document.getElementById('searchInput'),
+      metricRows: document.getElementById('metricRows'),
+      metricNodes: document.getElementById('metricNodes'),
+      metricHighConfidence: document.getElementById('metricHighConfidence'),
+      metricLowRisk: document.getElementById('metricLowRisk'),
+      metricMainBusiness: document.getElementById('metricMainBusiness'),
+      metricMainBusinessNote: document.getElementById('metricMainBusinessNote'),
+      businessBars: document.getElementById('businessBars'),
+      segmentBars: document.getElementById('segmentBars'),
+      tableBody: document.getElementById('tableBody'),
+      tableMeta: document.getElementById('tableMeta'),
+      emptyState: document.getElementById('emptyState'),
+      pageInfo: document.getElementById('pageInfo'),
+      prevBtn: document.getElementById('prevBtn'),
+      nextBtn: document.getElementById('nextBtn'),
+      pageSize: document.getElementById('pageSize'),
+      resetBtn: document.getElementById('resetBtn'),
+      downloadBtn: document.getElementById('downloadBtn')
+    };
+
+    init();
+
+    function normalizeRecord(row) {
+      const output = { ...row };
+      [
+        'node_count',
+        'vote_share_top1', 'vote_share_top2', 'vote_share_top3',
+        'top1_share_top1', 'top1_share_top2', 'top1_share_top3',
+        'top3_share_top1', 'top3_share_top2', 'top3_share_top3',
+        'avg_rank_score_top1', 'avg_rank_score_top2', 'avg_rank_score_top3',
+        'avg_expected_score_top1', 'avg_expected_score_top2', 'avg_expected_score_top3',
+        'high_risk_rate_top1', 'high_risk_rate_top2', 'high_risk_rate_top3',
+        'medium_risk_rate_top1', 'medium_risk_rate_top2', 'medium_risk_rate_top3'
+      ].forEach((key) => {
+        output[key] = Number.isFinite(Number(output[key])) ? Number(output[key]) : 0;
+      });
+      return output;
+    }
+
+    function init() {
+      els.dataSubtitle.textContent = `${formatInt(records.length)} 条条件组合 · V2 前端推荐数据`;
+      fillSelect(els.segmentFilter, unique(records, 'segment_level'), '全部粒度');
+      fillSelect(els.provinceFilter, unique(records, 'province'), '全部省份');
+      fillSelect(els.ispFilter, unique(records, 'isp'), '全部运营商');
+      fillSelect(els.resourceFilter, unique(records, 'resourcetype'), '全部资源类型');
+      fillSelect(els.confidenceFilter, ['high', 'medium', 'low'], '全部置信度', confidenceText);
+      fillSelect(els.businessFilter, unique(records, 'business_top1'), '全部 Top1 业务', businessOptionText);
+      bindEvents();
+      applyFilters();
+    }
+
+    function bindEvents() {
+      [
+        els.segmentFilter,
+        els.provinceFilter,
+        els.ispFilter,
+        els.resourceFilter,
+        els.confidenceFilter,
+        els.riskFilter,
+        els.businessFilter,
+        els.minNodesInput,
+        els.sortFilter,
+        els.searchInput
+      ].forEach((el) => el.addEventListener('input', () => {
+        state.page = 1;
+        applyFilters();
+      }));
+
+      document.querySelectorAll('th[data-sort]').forEach((th) => {
+        th.addEventListener('click', () => {
+          const key = th.dataset.sort;
+          if (state.sortKey === key) {
+            state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+          } else {
+            state.sortKey = key;
+            state.sortDir = ['condition_text', 'segment_level', 'confidence_level', 'business_top1'].includes(key) ? 'asc' : 'desc';
+          }
+          state.page = 1;
+          render();
+        });
+      });
+
+      els.prevBtn.addEventListener('click', () => {
+        state.page = Math.max(1, state.page - 1);
+        renderTable();
+      });
+      els.nextBtn.addEventListener('click', () => {
+        const pages = Math.max(1, Math.ceil(state.filtered.length / state.pageSize));
+        state.page = Math.min(pages, state.page + 1);
+        renderTable();
+      });
+      els.pageSize.addEventListener('input', () => {
+        state.pageSize = Number(els.pageSize.value);
+        state.page = 1;
+        renderTable();
+      });
+      els.resetBtn.addEventListener('click', resetFilters);
+      els.downloadBtn.addEventListener('click', downloadFilteredCsv);
+    }
+
+    function fillSelect(select, values, emptyLabel, labelFn = displayValue) {
+      select.innerHTML = '';
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = emptyLabel;
+      select.appendChild(empty);
+      values.forEach((value) => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = labelFn(value);
+        select.appendChild(option);
+      });
+    }
+
+    function unique(rows, key) {
+      return Array.from(new Set(rows.map((row) => clean(row[key])).filter(Boolean))).sort((a, b) => {
+        if (a === '__UNKNOWN__') return 1;
+        if (b === '__UNKNOWN__') return -1;
+        return a.localeCompare(b, 'zh-CN');
+      });
+    }
+
+    function applyFilters() {
+      const minNodes = Math.max(1, Number(els.minNodesInput.value || 1));
+      const search = clean(els.searchInput.value).toLowerCase();
+      state.sortKey = els.sortFilter.value;
+      state.sortDir = state.sortKey === 'risk' ? 'asc' : 'desc';
+      state.filtered = records.filter((row) => {
+        if (!matchValue(row.segment_level, els.segmentFilter.value)) return false;
+        if (!matchValue(row.province, els.provinceFilter.value)) return false;
+        if (!matchValue(row.isp, els.ispFilter.value)) return false;
+        if (!matchValue(row.resourcetype, els.resourceFilter.value)) return false;
+        if (!matchValue(row.confidence_level, els.confidenceFilter.value)) return false;
+        if (!matchValue(row.business_top1, els.businessFilter.value)) return false;
+        if (row.node_count < minNodes) return false;
+        if (!matchRisk(row.high_risk_rate_top1, els.riskFilter.value)) return false;
+        if (search && !searchText(row).includes(search)) return false;
+        return true;
+      });
+      render();
+    }
+
+    function render() {
+      sortFiltered();
+      renderMetrics();
+      renderBars();
+      renderTable();
+    }
+
+    function sortFiltered() {
+      const key = state.sortKey;
+      const dir = state.sortDir === 'asc' ? 1 : -1;
+      state.filtered.sort((a, b) => {
+        const aValue = sortValue(a, key);
+        const bValue = sortValue(b, key);
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+          return (aValue - bValue) * dir || clean(a.condition_text).localeCompare(clean(b.condition_text), 'zh-CN');
+        }
+        return String(aValue).localeCompare(String(bValue), 'zh-CN') * dir;
+      });
+    }
+
+    function renderMetrics() {
+      const rows = state.filtered;
+      const nodeSum = rows.reduce((sum, row) => sum + row.node_count, 0);
+      const highConfidence = rows.filter((row) => row.confidence_level === 'high').length;
+      const lowRisk = rows.filter((row) => row.high_risk_rate_top1 < 0.2).length;
+      const businessCounts = groupCount(rows, (row) => businessLabel(row, 1));
+      const [mainName, mainCount] = businessCounts[0] || ['-', 0];
+      els.metricRows.textContent = formatInt(rows.length);
+      els.metricNodes.textContent = formatInt(nodeSum);
+      els.metricHighConfidence.textContent = formatInt(highConfidence);
+      els.metricLowRisk.textContent = formatInt(lowRisk);
+      els.metricMainBusiness.textContent = mainName === '-' ? '-' : truncate(mainName, 12);
+      els.metricMainBusiness.title = mainName;
+      els.metricMainBusinessNote.textContent = mainCount ? `${formatInt(mainCount)} 个条件组合` : '';
+    }
+
+    function renderBars() {
+      renderBarList(els.businessBars, groupCount(state.filtered, (row) => businessLabel(row, 1)).slice(0, 8), '#2563eb');
+      renderBarList(els.segmentBars, groupCount(state.filtered, (row) => segmentText(row.segment_level)).slice(0, 8), '#15803d');
+    }
+
+    function renderBarList(container, rows, color) {
+      container.innerHTML = '';
+      if (!rows.length) {
+        container.innerHTML = '<div class="empty">暂无数据</div>';
+        return;
+      }
+      const max = Math.max(...rows.map(([, count]) => count), 1);
+      rows.forEach(([label, count]) => {
+        const row = document.createElement('div');
+        row.className = 'bar-row';
+        row.innerHTML = `
+          <div class="bar-label" title="${escapeAttr(label)}">${escapeHtml(label)}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.max(3, count / max * 100)}%;background:${color}"></div></div>
+          <div class="bar-value">${formatInt(count)}</div>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    function renderTable() {
+      const rows = state.filtered;
+      const pages = Math.max(1, Math.ceil(rows.length / state.pageSize));
+      state.page = Math.min(state.page, pages);
+      const start = (state.page - 1) * state.pageSize;
+      const pageRows = rows.slice(start, start + state.pageSize);
+      els.tableMeta.textContent = `${formatInt(rows.length)} 条`;
+      els.emptyState.hidden = rows.length > 0;
+      els.tableBody.innerHTML = pageRows.map(renderRow).join('');
+      els.pageInfo.textContent = `${state.page} / ${pages}`;
+      els.prevBtn.disabled = state.page <= 1;
+      els.nextBtn.disabled = state.page >= pages;
+    }
+
+    function renderRow(row) {
+      return `
+        <tr>
+          <td class="condition-cell">${escapeHtml(formatCondition(row.condition_text))}</td>
+          <td>${escapeHtml(segmentText(row.segment_level))}</td>
+          <td class="num">${formatInt(row.node_count)}</td>
+          <td>${confidenceBadge(row.confidence_level)}</td>
+          <td>${businessCell(row, 1)}</td>
+          <td class="num">${formatPct(row.vote_share_top1)}</td>
+          <td class="num">${formatPct(row.top1_share_top1)}</td>
+          <td class="num risk ${riskClass(row.high_risk_rate_top1)}">${formatPct(row.high_risk_rate_top1)}</td>
+          <td>${businessCell(row, 2)}</td>
+          <td>${businessCell(row, 3)}</td>
+        </tr>
+      `;
+    }
+
+    function businessCell(row, rank) {
+      const meta = businessMeta(row, rank);
+      const { id, name, missing } = meta;
+      const vote = formatPct(row[`vote_share_top${rank}`]);
+      const risk = formatPct(row[`high_risk_rate_top${rank}`]);
+      if (!id) return '';
+      const nameClass = missing ? 'business-name missing' : 'business-name';
+      return `
+        <div class="business">
+          <div class="${nameClass}">${escapeHtml(name)}</div>
+          <div class="business-id">业务ID ${escapeHtml(id)}</div>
+          <div class="small">投票 ${vote} · 高风险 ${risk}</div>
+        </div>
+      `;
+    }
+
+    function confidenceBadge(level) {
+      const cls = level === 'high' ? 'high' : level === 'medium' ? 'medium' : 'low';
+      return `<span class="badge ${cls}">${escapeHtml(confidenceText(level))}</span>`;
+    }
+
+    function resetFilters() {
+      [
+        els.segmentFilter,
+        els.provinceFilter,
+        els.ispFilter,
+        els.resourceFilter,
+        els.confidenceFilter,
+        els.riskFilter,
+        els.businessFilter
+      ].forEach((select) => { select.value = ''; });
+      els.minNodesInput.value = 10;
+      els.sortFilter.value = 'node_count';
+      els.searchInput.value = '';
+      state.page = 1;
+      applyFilters();
+    }
+
+    function downloadFilteredCsv() {
+      const columns = [
+        'segment_level', 'condition_text', 'node_count', 'confidence_level', 'confidence_reason',
+        'business_top1', 'business_name_top1', 'vote_share_top1', 'top1_share_top1', 'high_risk_rate_top1',
+        'business_top2', 'business_name_top2', 'vote_share_top2', 'top1_share_top2', 'high_risk_rate_top2',
+        'business_top3', 'business_name_top3', 'vote_share_top3', 'top1_share_top3', 'high_risk_rate_top3'
+      ];
+      const lines = [columns.join(',')];
+      state.filtered.forEach((row) => {
+        lines.push(columns.map((key) => csvEscape(row[key])).join(','));
+      });
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'filtered_condition_business_report.csv';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    function sortValue(row, key) {
+      if (key === 'confidence') return confidenceRank(row.confidence_level);
+      if (key === 'risk') return row.high_risk_rate_top1;
+      return row[key] ?? '';
+    }
+
+    function searchText(row) {
+      return [
+        row.segment_level,
+        row.condition_text,
+        row.province,
+        row.isp,
+        row.resourcetype,
+        row.city,
+        row.nattype,
+        row.dialtype,
+        row.deliverytype,
+        row.device_type,
+        row.bw_bucket,
+        row.actualbandwidth_bucket,
+        row.business_top1,
+        row.business_name_top1,
+        row.business_top2,
+        row.business_name_top2,
+        row.business_top3,
+        row.business_name_top3
+      ].map(clean).join(' ').toLowerCase();
+    }
+
+    function matchValue(value, expected) {
+      return !expected || clean(value) === expected;
+    }
+
+    function matchRisk(value, bucket) {
+      if (!bucket) return true;
+      if (bucket === 'low') return value < 0.2;
+      if (bucket === 'medium') return value >= 0.2 && value <= 0.5;
+      if (bucket === 'high') return value > 0.5;
+      return true;
+    }
+
+    function groupCount(rows, keyFn) {
+      const map = new Map();
+      rows.forEach((row) => {
+        const key = keyFn(row) || '未知';
+        map.set(key, (map.get(key) || 0) + 1);
+      });
+      return Array.from(map.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-CN'));
+    }
+
+    function businessLabel(row, rank) {
+      const meta = businessMeta(row, rank);
+      if (!meta.id) return '';
+      return meta.missing ? `${meta.name} (${meta.id})` : meta.name;
+    }
+
+    function businessOptionText(id) {
+      const row = records.find((item) => clean(item.business_top1) === id);
+      return row ? businessLabel(row, 1) : id;
+    }
+
+    function businessMeta(row, rank) {
+      const id = clean(row[`business_top${rank}`]);
+      const rawName = clean(row[`business_name_top${rank}`]);
+      const missing = !rawName || rawName === id || rawName === UNKNOWN_BUSINESS_NAME || rawName.startsWith('business_id:');
+      return {
+        id,
+        name: missing ? UNKNOWN_BUSINESS_NAME : rawName,
+        missing
+      };
+    }
+
+    function confidenceText(level) {
+      if (level === 'high') return '高';
+      if (level === 'medium') return '中';
+      if (level === 'low') return '低';
+      return displayValue(level);
+    }
+
+    function confidenceRank(level) {
+      return level === 'high' ? 3 : level === 'medium' ? 2 : 1;
+    }
+
+    function riskClass(value) {
+      if (value > 0.5) return 'high';
+      if (value >= 0.2) return 'medium';
+      return 'low';
+    }
+
+    function segmentText(level) {
+      const names = {
+        province_isp: '省份+运营商',
+        province_isp_resource: '省份+运营商+资源',
+        province_isp_city_resource: '省份+运营商+城市+资源',
+        province_isp_resource_network: '省份+运营商+资源+网络',
+        province_isp_resource_delivery_device: '省份+运营商+资源+交付+设备',
+        province_isp_resource_bandwidth: '省份+运营商+资源+带宽',
+        province_isp_city_resource_network_bandwidth: '省份+运营商+城市+资源+网络+带宽'
+      };
+      return names[level] || displayValue(level);
+    }
+
+    function formatCondition(text) {
+      return clean(text)
+        .split(';')
+        .map((part) => part.replace('__UNKNOWN__', '未知'))
+        .join('；');
+    }
+
+    function displayValue(value) {
+      const text = clean(value);
+      if (!text || text === '__UNKNOWN__') return '未知';
+      return text;
+    }
+
+    function clean(value) {
+      if (value === null || value === undefined || Number.isNaN(value)) return '';
+      return String(value).trim();
+    }
+
+    function formatInt(value) {
+      return Math.round(Number(value || 0)).toLocaleString('zh-CN');
+    }
+
+    function formatPct(value) {
+      const number = Number(value || 0);
+      return `${(number * 100).toFixed(number >= 0.1 ? 1 : 2)}%`;
+    }
+
+    function truncate(text, max) {
+      return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+    }
+
+    function escapeHtml(text) {
+      return clean(text).replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[char]));
+    }
+
+    function escapeAttr(text) {
+      return escapeHtml(text).replace(/`/g, '&#96;');
+    }
+
+    function csvEscape(value) {
+      const text = clean(value);
+      if (/[",\n]/.test(text)) {
+        return `"${text.replace(/"/g, '""')}"`;
+      }
+      return text;
+    }
+  </script>
+</body>
+</html>

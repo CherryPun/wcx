@@ -28,13 +28,42 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy import sparse
-from sklearn.ensemble import ExtraTreesClassifier
-from sklearn.linear_model import Ridge
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.preprocessing import OneHotEncoder
+try:
+    from scipy import sparse
+    from sklearn.ensemble import ExtraTreesClassifier
+    from sklearn.linear_model import Ridge
+    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+    from sklearn.preprocessing import OneHotEncoder
+except ModuleNotFoundError:
+    sparse = None
+    ExtraTreesClassifier = None
+    Ridge = None
+    OneHotEncoder = None
+    mean_absolute_error = None
+    mean_squared_error = None
+    r2_score = None
 
-sys.path.insert(0, "/Users/nany/Downloads/superset-sql-query-skill/common")
+SUPERSET_COMMON_CANDIDATES = [
+    Path(os.environ["MULTIBUSINESS_SUPERSET_COMMON"]).expanduser()
+    for _ in [0]
+    if os.environ.get("MULTIBUSINESS_SUPERSET_COMMON")
+]
+SUPERSET_COMMON_CANDIDATES.extend(
+    [
+        Path("/Users/rj/Desktop/superset-sql-query-skill/common"),
+        Path("/Users/rj/Desktop/superset/superset-sql-query/common"),
+        Path("/Users/rj/Desktop/hj_sueprset/superset-sql-query/common"),
+        Path("/Users/nany/Downloads/superset-sql-query-skill/common"),
+    ]
+)
+for superset_common in SUPERSET_COMMON_CANDIDATES:
+    if (superset_common / "superset_api.py").exists():
+        sys.path.insert(0, str(superset_common))
+        break
+else:
+    raise RuntimeError(
+        "找不到 superset_api.py；请通过 MULTIBUSINESS_SUPERSET_COMMON 指向 common 目录。"
+    )
 from superset_api import SupersetSQLClient
 
 
@@ -43,11 +72,37 @@ VM_BASE = "https://vm-select.mvm.qiniu.io/select/293:0/prometheus/api/v1"
 PROM_FEATURE_CHUNK_SIZE = 500
 HERE = Path(__file__).resolve().parent
 
-START_DAY = dt.date(2026, 3, 16)
-END_DAY = dt.date(2026, 8, 4)
-ATTRIBUTE_DAY = "20260805"
+
+def env_date(name: str, default: dt.date) -> dt.date:
+    value = os.environ.get(name)
+    return dt.date.fromisoformat(value) if value else default
+
+
+def env_suffixes(default: tuple[str, ...]) -> tuple[str, ...]:
+    value = os.environ.get("MULTIBUSINESS_SUFFIXES", "").strip()
+    if not value:
+        return default
+    suffixes: list[str] = []
+    for part in value.split(","):
+        item = part.strip().lower().removeprefix("0x")
+        if not item:
+            continue
+        if "-" in item:
+            start_text, end_text = [piece.strip().removeprefix("0x") for piece in item.split("-", 1)]
+            start = int(start_text, 16)
+            end = int(end_text, 16)
+            step = 1 if end >= start else -1
+            suffixes.extend(f"{number:02x}" for number in range(start, end + step, step))
+        else:
+            suffixes.append(f"{int(item, 16):02x}")
+    return tuple(dict.fromkeys(suffixes))
+
+
+START_DAY = env_date("MULTIBUSINESS_START_DAY", dt.date(2026, 3, 16))
+END_DAY = env_date("MULTIBUSINESS_END_DAY", dt.date(2026, 8, 4))
+ATTRIBUTE_DAY = os.environ.get("MULTIBUSINESS_ATTRIBUTE_DAY", "20260805")
 ATTRIBUTE_LOOKBACK_DAYS = int(os.environ.get("MULTIBUSINESS_ATTRIBUTE_LOOKBACK_DAYS", "1"))
-SUFFIXES = tuple(f"{value:02x}" for value in range(13))
+SUFFIXES = env_suffixes(tuple(f"{value:02x}" for value in range(13)))
 NODE_BUCKETS = tuple("0123456789abcdefy")
 NODE_SUB_BUCKETS = tuple("0123456789abcdef")
 SAMPLE_RATE = len(SUFFIXES) / 256
@@ -59,16 +114,18 @@ QUERY_WORKERS = int(os.environ.get("MULTIBUSINESS_QUERY_WORKERS", "3"))
 ATTRIBUTE_BATCH_SIZE = 1200
 OUTCOME_QUERY_LIMIT = 3_000_000
 
-OUTPUT_PAIRS = HERE / "multibusiness_eligible_pairs.csv"
-OUTPUT_OUTCOMES = HERE / "multibusiness_outcomes.csv"
-OUTPUT_NODES = HERE / "multibusiness_nodes.csv"
-OUTPUT_PROM = HERE / "multibusiness_prometheus_probe.json"
-OUTPUT_RECOMMENDATIONS = HERE / "multibusiness_recommendations.csv"
-OUTPUT_BASELINE_RECOMMENDATIONS = HERE / "multibusiness_recommendations_pre_day_core_baseline.csv"
-OUTPUT_FEATURE_COMPARISON = HERE / "multibusiness_feature_comparison_pre_day.json"
-OUTPUT_MULTISEED = HERE / "multibusiness_multiseed_validation_pre_day.json"
-OUTPUT_METRICS = HERE / "multibusiness_metrics.json"
-OUTPUT_REPORT = HERE / "多业务节点最佳业务重建报告.md"
+OUTPUT_DIR = Path(os.environ.get("MULTIBUSINESS_OUTPUT_DIR", HERE)).expanduser()
+OUTPUT_PAIRS = OUTPUT_DIR / "multibusiness_eligible_pairs.csv"
+OUTPUT_OUTCOMES = OUTPUT_DIR / "multibusiness_outcomes.csv"
+OUTPUT_NODES = OUTPUT_DIR / "multibusiness_nodes.csv"
+OUTPUT_PROM = OUTPUT_DIR / "multibusiness_prometheus_probe.json"
+OUTPUT_RECOMMENDATIONS = OUTPUT_DIR / "multibusiness_recommendations.csv"
+OUTPUT_BASELINE_RECOMMENDATIONS = OUTPUT_DIR / "multibusiness_recommendations_pre_day_core_baseline.csv"
+OUTPUT_FEATURE_COMPARISON = OUTPUT_DIR / "multibusiness_feature_comparison_pre_day.json"
+OUTPUT_MULTISEED = OUTPUT_DIR / "multibusiness_multiseed_validation_pre_day.json"
+OUTPUT_METRICS = OUTPUT_DIR / "multibusiness_metrics.json"
+OUTPUT_REPORT = OUTPUT_DIR / "多业务节点最佳业务重建报告.md"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # 该分区在本次重建中已由 Superset 返回 HIVE_CURSOR_ERROR，并在属性拉取时排除。
 # 缓存复用时仍保留这条数据质量记录，避免报告因不重复拉取而丢失。
 UNREADABLE_NODE_ANALYSIS_PARTITIONS: set[tuple[str, str]] = {("20260627", "05")}
@@ -145,7 +202,8 @@ NUM_FEATURES = [
     "dby_online_ratio", "analysis_retrans_abnormal_ratio",
     "analysis_pingloss_abnormal_ratio", "analysis_cpuutil_abnormal_ratio",
     "analysis_actual_bw_ratio", "analysis_udp_actual_bw_ratio",
-    "analysis_out_limit_bw_ratio",
+    "analysis_out_limit_bw_ratio", "join_transprovrate",
+    "join_origintransprovrate", "join_scheduletransprovrate",
 ]
 
 # 预测模型只允许使用上线前即可确定的节点固有属性：节点配置、地域、设备信息、
@@ -174,6 +232,8 @@ NODE_INTRINSIC_NUM_FEATURES = [
     "join_cpu_totalcores", "join_cpu_totalphysicals", "join_cpu_totalthreads",
     "join_memtotal", "join_disks_totalsize", "join_disks_total_size",
     "join_disks_hdd_size", "join_disks_ssd_size", "join_disks_system_size",
+    "analysis_transprovrate", "join_transprovrate",
+    "join_origintransprovrate", "join_scheduletransprovrate",
 ]
 CORE_NODE_INTRINSIC_CAT_FEATURES = [
     "vendorid", "deliverytype", "resourcetype", "dialtype", "nattype",
@@ -661,6 +721,10 @@ def attribute_sql_for_node_join(node_targets: pd.DataFrame) -> str:
         nj.nodestaticinfo.nominalinfo.dialtype AS join_dialtype,
         nj.nodestaticinfo.nominalinfo.nattype AS join_nattype,
         element_at(nj.nodestaticinfo.nominalinfo.scheduleisps, 1) AS scheduleisps,
+        array_join(nj.nodestaticinfo.nominalinfo.scheduleisps, '|') AS scheduleisps_text,
+        nj.nodestaticinfo.nominalinfo.transprovrate AS join_transprovrate,
+        nj.nodestaticinfo.nominalinfo.origintransprovrate AS join_origintransprovrate,
+        nj.nodestaticinfo.nominalinfo.scheduletransprovrate AS join_scheduletransprovrate,
         nj.nodestaticinfo.regsource AS regsource,
         nj.nodestaticinfo.customermode AS customermode,
         nj.nodestaticinfo.nominalinfo.province AS join_province,
