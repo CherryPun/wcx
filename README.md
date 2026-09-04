@@ -125,7 +125,7 @@ recent_month_large_1d/v2_frontend_condition_business_report_large_recent_1m.html
 recent_month_large_1d/recent_large_training_summary.json
 ```
 
-主流业务 allowlist 已固化到 `mainstream_business_allowlist.csv`。当前口径包含字节、百度、优酷、快手、腾讯、爱奇艺、B站、七牛真实/虚拟业务，以及从 2026-08 宽表和客户清单审计补充的主流业务变体。虚拟/签约业务绑定审计结果记录在 `business_binding_audit/`，七牛手工确认绑定关系记录在 `business_virtual_binding_map.csv`。使用主流业务版入口：
+主流业务 allowlist 已固化到 `mainstream_business_allowlist.csv`。当前口径只包含已确认的字节、百度、优酷、快手、腾讯、爱奇艺、B站主流业务及七牛相关业务；审计中发现但未确认属于主流范围的变体不进入训练。虚拟/签约业务绑定审计结果记录在 `business_binding_audit/`，七牛手工确认绑定关系记录在 `business_virtual_binding_map.csv`。使用主流业务版入口：
 
 ```bash
 python3 -u build_mainstream_large_training.py \
@@ -301,12 +301,28 @@ current_non_idc_large_scan_unit_bw_sched/current_condition_business_report_unit_
 
 # machine-test
 
-## V3 日粒度主流业务模型（当前口径）
+## V3.1 日粒度加权主流业务模型（当前口径）
 
 V3 不再把同一节点同一天的多个 `customerId` 当成可比较业务。当天业务由
 `state='online' AND stage='inService'` 的主流业务行确定；七牛系列虚拟 ID
 统一为 `10000280 / 七牛CDN-ZJ月95`。同日仍有多个有效主流业务、存在未归属
 金额或建设带宽不一致时，整天不进训练并写入审计表。
+
+NiuLink 虚拟业务目录通过环境变量鉴权同步，鉴权值不写入项目：
+
+```bash
+NIULINK_AUTH='<authorization>' python3 fetch_niulink_virtual_business_bindings.py
+```
+
+虚拟业务只有在当天财务行、同日真实业务或业务建议字段能唯一指向一个主流真实业务时才归属；一对多且无法唯一判断的节点日直接剔除。专线和汇聚目前都可参与推荐，不设硬准入限制。
+
+连续重复样本的训练权重为：
+
+```text
+单条权重 = 1 / 同节点同业务连续有效天数
+```
+
+因此同一业务连续运行 30 天与连续运行 1 天都只贡献 1 个连续段的总权重，避免稳定运行时间长的业务仅凭重复天数支配模型。
 
 网络调度口径固定为：
 
@@ -336,22 +352,156 @@ V2 排序只使用期望综合收益，旧版 `source_rate/champion/expected_bes
 
 ```bash
 python3 -u build_v3_daily_business_training.py \
-  --output-dir recent_month_large_mainstream_v3_daily \
+  --output-dir recent_month_large_mainstream_v3_daily_weighted \
   --min-business-support 30
 
 python3 -u scan_current_non_idc_large_mismatches.py \
   --output-dir current_non_idc_large_scan_v3_daily \
-  --model recent_month_large_mainstream_v3_daily/v2_large_mainstream_outputs/v2_ranking_model.json
+  --model recent_month_large_mainstream_v3_daily_weighted/v2_large_mainstream_outputs/v2_ranking_model.json
 ```
 
 当前关键产物：
 
 ```text
-recent_month_large_mainstream_v3_daily/v3_daily_training_summary.json
-recent_month_large_mainstream_v3_daily/node_day_sampling_audit_v3.csv
-recent_month_large_mainstream_v3_daily/multibusiness_outcomes_large_mainstream_v3_daily.csv
-recent_month_large_mainstream_v3_daily/v2_large_mainstream_outputs/v2_ranking_model.json
-recent_month_large_mainstream_v3_daily/business_recommendation_profit_report_v3_daily.html
+recent_month_large_mainstream_v3_daily_weighted/v3_daily_training_summary.json
+recent_month_large_mainstream_v3_daily_weighted/node_day_sampling_audit_v3.csv
+recent_month_large_mainstream_v3_daily_weighted/multibusiness_outcomes_large_mainstream_v3_daily.csv
+recent_month_large_mainstream_v3_daily_weighted/v2_large_mainstream_outputs/v2_ranking_model.json
+recent_month_large_mainstream_v3_daily_weighted/business_recommendation_profit_report_v3_daily.html
 current_non_idc_large_scan_v3_daily/current_business_sampling_audit_20260901_20260901.csv
 current_non_idc_large_scan_v3_daily/current_non_idc_large_mismatch_candidates_20260902.csv
+```
+
+## V4 双收益结果模型与可信度报告
+
+V4 不再学习“历史上最常被选中的业务”，而是对每个候选业务分别预测两个日粒度目标：
+
+```text
+矿主单位收益 = cost_finalAmount / 建设带宽
+平台单位利润 = (revenue_finalAmount - cost_finalAmount) / 建设带宽
+综合分 = 50% 归一化矿主预测 + 50% 归一化平台预测
+```
+
+模型画像严格限定为省份、运营商、调度类型、CPU 档位、NAT 类型、内存档位、磁盘档位、
+IPv6 能力、建设带宽档位和整体丢包压测满意度。CPU 使用率、运行时流量、城市、资源类型等
+字段不进入模型。验证严格按时间切分，训练、区间校准、最终测试
+依次后置，并输出每个业务的 MAE、R²、90% 区间覆盖率、历史分配概率和 Doubly Robust
+偏差修正诊断。DR 仅用于观察性诊断，不代表因果证明。
+
+整体丢包压测满意度来自 Superset `jarvis.node_join.nodeinfo.netbenchresults`。每个节点只取
+最新分区中最新小时、最新上报的一次有效 TCP 压测，不按训练日期展开。多线路节点按
+`Σ line.limitbw / Σ line.expectedbw * 100%` 计算整体满意度并限制在 `0~100%`；原始汇总比例
+仅保留用于审计，因为节点建设带宽变更后该比例可能超过 100%。缺失节点保持未知，不使用
+`pinglossp5avgbw` 或日常质量丢包率替代。
+
+按当前业务规则，最新压测值作为节点静态画像回填到该节点的全部历史收益样本。收益标签仍按
+时间切分验证，但压测特征并非逐历史日回放，因此这部分验证存在未来画像信息的限制，不能
+解释为严格因果效果或直接支持自动切换业务。
+
+完整重建与校验：
+
+```bash
+python3 -u fetch_latest_node_pressure.py \
+  --snapshot-day 2026-09-04 \
+  --output latest_node_pressure_profiles.csv
+
+python3 -u v4_outcome_recommendation.py build \
+  --latest-pressure-profiles latest_node_pressure_profiles.csv \
+  --output-dir recent_month_large_mainstream_v4_outcome_latest_pressure
+
+python3 v4_outcome_recommendation.py check \
+  --output-dir recent_month_large_mainstream_v4_outcome_latest_pressure
+
+python3 -m unittest -v \
+  test_fetch_latest_node_pressure.py \
+  test_v4_outcome_recommendation.py
+```
+
+当前产物：
+
+```text
+latest_node_pressure_profiles.csv
+recent_month_large_mainstream_v4_outcome_latest_pressure/v4_business_recommendation_report.html
+recent_month_large_mainstream_v4_outcome_latest_pressure/v4_training_summary.json
+recent_month_large_mainstream_v4_outcome_latest_pressure/v4_business_training_metrics.csv
+recent_month_large_mainstream_v4_outcome_latest_pressure/v4_node_recommendations.csv
+recent_month_large_mainstream_v4_outcome_latest_pressure/v4_review_switch_candidates.csv
+recent_month_large_mainstream_v4_outcome_latest_pressure/v4_temporal_validation_predictions.csv
+```
+
+只有 Top1 点估计平台利润为正且 90% 下界不为负的高可信节点才可进入“优先人工复核”；
+其余节点会降级为“谨慎人工复核”或“暂不推荐执行”。任何可信度等级都不允许自动切业务。
+现网报告会合并最近一天的权威当前业务快照，分别标记当前已是 Top1、当前非 Top1、
+当前业务不在候选集和当前业务未知；只有“当前非 Top1”且模型未拦截的记录才进入人工换业务复核集合。
+
+## V5 公平对照与存量增强模型
+
+完整的数据获取、日级清洗、字段口径、算法、验证、决策和可信度说明见
+[`节点业务推荐模型V5全流程说明.md`](节点业务推荐模型V5全流程说明.md)。
+
+V5 在完全相同的日粒度数据、业务候选集和时间窗口上，对以下模型进行公平比较：
+
+- V4 分层收益基线。
+- 只使用十项节点画像的 XGBoost 收益模型。
+- 使用稳定倾向权重修正历史业务分配偏差的 XGBoost 模型。
+- 面向存量节点的业务无关节点残差修正；新节点自动回退到画像模型。
+
+模型选择只看 `2026-08-26` 至 `2026-08-28` 校准期，`2026-08-29` 至
+`2026-09-01` 保留为最终时间外测试。节点残差修正必须让校准期 RMSE 至少下降 3%
+才启用。倾向权重截断在 `0.25~4.0`，防止极低历史分配概率放大噪声。
+
+调度类型只接受以下四类：
+
+```text
+本网本省、本网出省、异网本省、异网出省
+```
+
+同时包含本网与异网的混合调度记录不会被静默归类，本轮有 133 个节点日被 V5 排除。
+
+当前完整训练结果：
+
+```text
+训练节点日：279,310
+有效连续段：17,832.29
+历史节点：11,808
+候选业务：20
+
+矿主模型：XGBoost + 存量节点残差
+矿主 R²：0.2825 -> 0.3786
+矿主 RMSE：0.04704 -> 0.04378（下降 6.94%）
+
+平台模型：保留 V4 分层基线，不启用节点残差
+平台 R²：0.0263 -> 0.0263
+平台 RMSE：0.04917 -> 0.04917
+```
+
+平台利润的时间外解释能力仍然很低，且 86.5% 节点的 Top1 平台利润 90% 区间跨零，
+因此 V5 总体可信度仍标记为低，不允许自动切业务。当前业务与模型 Top1 不一致的
+4,152 个节点写入观察清单；只有 Top1 综合得分的 90% 下界高于当前业务 90% 上界的
+节点才写入严格换业务复核清单，本轮严格清单为 0 个。
+
+安装、训练和校验：
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-v5.txt
+
+.venv/bin/python v5_hybrid_recommendation.py build \
+  --output-dir recent_month_large_mainstream_v5_hybrid
+
+.venv/bin/python v5_hybrid_recommendation.py check \
+  --output-dir recent_month_large_mainstream_v5_hybrid
+
+.venv/bin/python -m unittest -v test_v5_hybrid_recommendation.py
+```
+
+主要产物：
+
+```text
+recent_month_large_mainstream_v5_hybrid/v5_business_recommendation_report.html
+recent_month_large_mainstream_v5_hybrid/v5_training_summary.json
+recent_month_large_mainstream_v5_hybrid/v5_model_comparison.csv
+recent_month_large_mainstream_v5_hybrid/v5_node_recommendations.csv
+recent_month_large_mainstream_v5_hybrid/v5_current_not_top1_watchlist.csv
+recent_month_large_mainstream_v5_hybrid/v5_review_switch_candidates.csv
 ```

@@ -35,6 +35,7 @@ DEFAULT_SOURCE_DIR = HERE / "recent_month_large_1d"
 DEFAULT_OUTPUT_DIR = HERE / "recent_month_large_mainstream_v3_daily"
 DEFAULT_ALLOWLIST = HERE / "mainstream_business_allowlist.csv"
 DEFAULT_BUSINESS_MAP = HERE / "v1_business_name_map_enriched.csv"
+DEFAULT_VIRTUAL_BINDING_DIR = HERE / "business_binding_audit"
 DEFAULT_CURRENT_NODES = (
     HERE
     / "current_non_idc_large_scan_network_scope"
@@ -75,6 +76,136 @@ def qiniu_ids(allowlist: pd.DataFrame) -> set[str]:
 def canonical_business(business: Any, qiniu_business_ids: set[str]) -> str:
     value = clean(business)
     return QINIU_BUSINESS_ID if value in qiniu_business_ids else value
+
+
+def load_virtual_bindings(path: Path | None) -> dict[str, set[str]]:
+    if path is None or not path.exists():
+        return {}
+    frame = pd.read_csv(path, dtype=str).fillna("")
+    required = {"virtual_business", "business"}
+    missing = required - set(frame.columns)
+    if missing:
+        raise RuntimeError(f"virtual binding file missing columns: {sorted(missing)}")
+    output: dict[str, set[str]] = {}
+    for row in frame.itertuples(index=False):
+        virtual_business = clean(row.virtual_business)
+        business = clean(row.business)
+        if virtual_business and business:
+            output.setdefault(virtual_business, set()).add(business)
+    return output
+
+
+def latest_virtual_binding_path(directory: Path = DEFAULT_VIRTUAL_BINDING_DIR) -> Path | None:
+    candidates = sorted(directory.glob("niulink_virtual_business_bindings_*.csv"))
+    return candidates[-1] if candidates else None
+
+
+def apply_virtual_business_bindings(
+    frame: pd.DataFrame,
+    allow_ids: set[str],
+    qiniu_business_ids: set[str],
+    virtual_bindings: dict[str, set[str]],
+) -> pd.DataFrame:
+    """Resolve an active virtual ID only when node-day evidence is unique."""
+    output = frame.copy()
+    output["canonical_business"] = output["source_business"].map(
+        lambda value: canonical_business(value, qiniu_business_ids)
+    )
+    output["is_mainstream"] = output["source_business"].isin(allow_ids)
+    output["is_known_virtual"] = output["source_business"].isin(virtual_bindings)
+    output["virtual_resolution_status"] = ""
+    output["virtual_resolved_business"] = ""
+    if not virtual_bindings:
+        return output
+
+    output["_has_financial"] = (
+        output["cost_finalAmount"].fillna(0.0).abs().gt(1e-12)
+        | output["revenue_finalAmount"].fillna(0.0).abs().gt(1e-12)
+    )
+    keys = ["node_id", "sample_day"]
+    active_virtual = output[
+        output["is_active"]
+        & output["is_known_virtual"]
+        & ~output["is_mainstream"]
+    ]
+    for key_values, virtual_rows in active_virtual.groupby(keys, sort=False, dropna=False):
+        key_values = key_values if isinstance(key_values, tuple) else (key_values,)
+        day_mask = pd.Series(True, index=output.index)
+        for key, value in zip(keys, key_values):
+            day_mask &= output[key].eq(value)
+        day_rows = output[day_mask]
+        for virtual_business, source_rows in virtual_rows.groupby("source_business", sort=False):
+            associated_sources = virtual_bindings.get(clean(virtual_business), set())
+            associated_canonical = {
+                canonical_business(value, qiniu_business_ids)
+                for value in associated_sources
+                if value in allow_ids
+            }
+            financial_candidates = {
+                canonical_business(value, qiniu_business_ids)
+                for value in day_rows.loc[
+                    day_rows["_has_financial"]
+                    & day_rows["source_business"].isin(associated_sources),
+                    "source_business",
+                ]
+            }
+            active_candidates = {
+                canonical_business(value, qiniu_business_ids)
+                for value in day_rows.loc[
+                    day_rows["is_active"]
+                    & day_rows["source_business"].isin(associated_sources),
+                    "source_business",
+                ]
+            }
+            suggested_sources: set[str] = set()
+            for value in source_rows.get("vendorSuggestCustomersName", pd.Series(dtype=object)):
+                suggested_sources.update(parse_customer_ids(value))
+            suggested_candidates = {
+                canonical_business(value, qiniu_business_ids)
+                for value in suggested_sources & associated_sources
+                if value in allow_ids
+            }
+
+            evidence = financial_candidates or active_candidates or suggested_candidates
+            if len(evidence) == 1:
+                resolved = next(iter(evidence))
+            elif not evidence and len(associated_canonical) == 1:
+                resolved = next(iter(associated_canonical))
+            else:
+                resolved = ""
+
+            virtual_mask = day_mask & output["source_business"].eq(virtual_business)
+            if resolved:
+                output.loc[virtual_mask, "canonical_business"] = resolved
+                output.loc[virtual_mask, "is_mainstream"] = True
+                output.loc[virtual_mask, "virtual_resolution_status"] = "resolved"
+                output.loc[virtual_mask, "virtual_resolved_business"] = resolved
+            else:
+                output.loc[virtual_mask, "virtual_resolution_status"] = "ambiguous"
+    output = output.drop(columns=["_has_financial"])
+    return output
+
+
+def add_consecutive_sample_weights(facts: pd.DataFrame) -> pd.DataFrame:
+    """Give every contiguous node/business run one unit of total weight."""
+    if facts.empty:
+        return facts
+    output = facts.copy()
+    output["_original_order"] = range(len(output))
+    output["_sample_date"] = pd.to_datetime(output["sample_day"], errors="coerce")
+    output = output.sort_values(["node_id", "_sample_date", "business", "_original_order"])
+    previous_business = output.groupby("node_id", sort=False)["business"].shift()
+    day_gap = output.groupby("node_id", sort=False)["_sample_date"].diff().dt.days
+    new_run = previous_business.ne(output["business"]) | day_gap.ne(1) | day_gap.isna()
+    output["consecutive_business_run"] = new_run.groupby(output["node_id"]).cumsum().astype(int)
+    run_fields = ["node_id", "business", "consecutive_business_run"]
+    output["consecutive_valid_days"] = output.groupby(run_fields)["sample_day"].transform("size")
+    output["sample_weight"] = 1.0 / output["consecutive_valid_days"].astype(float)
+    return (
+        output.sort_values("_original_order")
+        .drop(columns=["_original_order", "_sample_date"])
+        .reset_index(drop=True)
+    )
 
 
 def parse_customer_ids(value: Any) -> set[str]:
@@ -216,6 +347,7 @@ def _build_daily_facts_reference(
     raw: pd.DataFrame,
     allowlist: pd.DataFrame,
     business_name_map: dict[str, str],
+    virtual_bindings: dict[str, set[str]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     frame = raw.copy()
     rename = {"nodeId": "node_id", "day": "sample_day", "customerId": "source_business"}
@@ -233,13 +365,12 @@ def _build_daily_facts_reference(
     qiniu_business_ids = qiniu_ids(allowlist)
     allow_names = dict(zip(allowlist["business"].map(clean), allowlist["business_name"].map(clean)))
     allow_names[QINIU_BUSINESS_ID] = QINIU_BUSINESS_NAME
-    frame["canonical_business"] = frame["source_business"].map(
-        lambda value: canonical_business(value, qiniu_business_ids)
-    )
-    frame["is_mainstream"] = frame["source_business"].isin(allow_ids)
     frame["is_active"] = (
         frame["state"].str.lower().eq("online")
         & frame["stage"].str.lower().eq("inservice")
+    )
+    frame = apply_virtual_business_bindings(
+        frame, allow_ids, qiniu_business_ids, virtual_bindings or {}
     )
 
     facts: list[dict[str, Any]] = []
@@ -390,13 +521,14 @@ def _build_daily_facts_reference(
     facts_frame["business_count"] = facts_frame.groupby("node_id")["business"].transform("nunique")
     facts_frame["business_first_day_count"] = facts_frame.groupby("node_id")["sample_day"].transform("nunique")
     facts_frame["ever_online"] = 1
-    return facts_frame, audit_frame, frame
+    return add_consecutive_sample_weights(facts_frame), audit_frame, frame
 
 
 def build_daily_facts(
     raw: pd.DataFrame,
     allowlist: pd.DataFrame,
     business_name_map: dict[str, str],
+    virtual_bindings: dict[str, set[str]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Vectorized implementation of the V3 node-day sampling contract."""
     frame = raw.copy().rename(columns={
@@ -425,13 +557,12 @@ def build_daily_facts(
     qiniu_business_ids = qiniu_ids(allowlist)
     allow_names = dict(zip(allowlist["business"].map(clean), allowlist["business_name"].map(clean)))
     allow_names[QINIU_BUSINESS_ID] = QINIU_BUSINESS_NAME
-    frame["canonical_business"] = frame["source_business"].map(
-        lambda value: canonical_business(value, qiniu_business_ids)
-    )
-    frame["is_mainstream"] = frame["source_business"].isin(allow_ids)
     frame["is_active"] = (
         frame["state"].str.lower().eq("online")
         & frame["stage"].str.lower().eq("inservice")
+    )
+    frame = apply_virtual_business_bindings(
+        frame, allow_ids, qiniu_business_ids, virtual_bindings or {}
     )
 
     summary = frame[keys].drop_duplicates().set_index(keys)
@@ -457,6 +588,18 @@ def build_daily_facts(
     summary["active_nonmainstream_count"] = active_nonmainstream.groupby(keys)[
         "source_business"
     ].nunique()
+    unresolved_virtual = active[active["virtual_resolution_status"].eq("ambiguous")]
+    summary["ambiguous_virtual_count"] = unresolved_virtual.groupby(keys)[
+        "source_business"
+    ].nunique()
+    summary["resolved_virtual_business_ids"] = joined_distinct(
+        active[active["virtual_resolution_status"].eq("resolved")],
+        "source_business",
+    )
+    summary["ambiguous_virtual_business_ids"] = joined_distinct(
+        unresolved_virtual,
+        "source_business",
+    )
     summary["selected_business"] = active_mainstream.groupby(keys)["canonical_business"].min()
 
     positive_bw = frame[frame["buildBandwidth"].gt(0)][keys + ["buildBandwidth"]]
@@ -470,7 +613,7 @@ def build_daily_facts(
     frame = frame.merge(selected, left_on=keys, right_index=True, how="left", sort=False)
     qiniu_active = frame[
         frame["is_active"]
-        & frame["source_business"].isin(qiniu_business_ids)
+        & frame["canonical_business"].eq(QINIU_BUSINESS_ID)
     ]
     bound_records: list[dict[str, str]] = []
     for row in qiniu_active[keys + ["vendorSuggestCustomersName"]].itertuples(index=False):
@@ -494,7 +637,7 @@ def build_daily_facts(
         & frame["canonical_business"].eq(frame["_selected_business"])
     )
     qiniu_attributed = selected_qiniu & (
-        frame["source_business"].isin(qiniu_business_ids)
+        frame["canonical_business"].eq(QINIU_BUSINESS_ID)
         | row_bound_key.isin(bound_keys)
     )
     frame["is_attributed"] = direct_attributed | qiniu_attributed
@@ -556,7 +699,7 @@ def build_daily_facts(
     for column in [
         "active_mainstream_count", "active_nonmainstream_count", "build_bandwidth_count",
         "unattributed_financial_rows", "attributed_rows", "invalid_transprov_rows",
-        "transprov_value_count",
+        "transprov_value_count", "ambiguous_virtual_count",
     ]:
         summary[column] = pd.to_numeric(summary[column], errors="coerce").fillna(0).astype(int)
     summary["status"] = "clean"
@@ -567,6 +710,11 @@ def build_daily_facts(
         summary.loc[eligible, "status"] = status
         summary.loc[eligible, "reason"] = reason
 
+    exclude(
+        summary["ambiguous_virtual_count"].gt(0),
+        "excluded_ambiguous_virtual_business_binding",
+        "active virtual business cannot be uniquely resolved to one mainstream real business",
+    )
     exclude(
         summary["active_mainstream_count"].eq(0),
         "excluded_no_active_mainstream_business",
@@ -637,6 +785,7 @@ def build_daily_facts(
         "daily_transprovrate": clean_summary["daily_transprovrate"],
         "source_active_business_ids": clean_summary["active_business_ids"],
         "qiniu_bound_business_ids": clean_summary["qiniu_bound_business_ids"],
+        "resolved_virtual_business_ids": clean_summary["resolved_virtual_business_ids"],
         **{target: clean_summary[target] for target in DAILY_PROFILE_FIELDS.values()},
     })
     if not facts.empty:
@@ -655,7 +804,7 @@ def build_daily_facts(
     )
     helper_columns = [column for column in raw_annotated.columns if column.startswith("_")]
     raw_annotated = raw_annotated.drop(columns=helper_columns)
-    return facts, audit, raw_annotated
+    return add_consecutive_sample_weights(facts), audit, raw_annotated
 
 
 def build_training_nodes(facts: pd.DataFrame) -> pd.DataFrame:
@@ -712,9 +861,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--allowlist", type=Path, default=DEFAULT_ALLOWLIST)
     parser.add_argument("--business-map", type=Path, default=DEFAULT_BUSINESS_MAP)
+    parser.add_argument(
+        "--virtual-bindings",
+        type=Path,
+        help="NiuLink virtual binding CSV; defaults to the latest local audited snapshot.",
+    )
     parser.add_argument("--current-nodes", type=Path, default=DEFAULT_CURRENT_NODES)
     parser.add_argument("--start-day")
     parser.add_argument("--end-day")
+    parser.add_argument(
+        "--raw-input",
+        type=Path,
+        help="Reuse an existing raw node-day CSV instead of querying Superset.",
+    )
     parser.add_argument("--chunk-size", type=int, default=700)
     parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--min-business-support", type=int, default=30)
@@ -737,20 +896,31 @@ def main() -> int:
         (args.source_dir / "large_candidate_node_ids_recent_1m.json").read_text(encoding="utf-8")
     )
     candidate_ids = sorted({clean(value) for value in candidate_payload["node_ids"] if clean(value)})
-    raw_path = args.output_dir / f"node_day_business_raw_{start_day.replace('-', '')}_{end_day.replace('-', '')}.csv"
-    raw = fetch_raw_rows(
-        candidate_ids,
-        start_day,
-        end_day,
-        raw_path,
-        args.chunk_size,
-        args.workers,
-        args.refresh,
-    )
+    if args.raw_input:
+        raw_path = args.raw_input.resolve()
+        raw = pd.read_csv(
+            raw_path,
+            dtype={"nodeId": "string", "customerId": "string"},
+            low_memory=False,
+        )
+        print(f"reuse explicit raw input {raw_path}")
+    else:
+        raw_path = args.output_dir / f"node_day_business_raw_{start_day.replace('-', '')}_{end_day.replace('-', '')}.csv"
+        raw = fetch_raw_rows(
+            candidate_ids,
+            start_day,
+            end_day,
+            raw_path,
+            args.chunk_size,
+            args.workers,
+            args.refresh,
+        )
 
     allowlist = load_allowlist(args.allowlist)
     names = load_business_names(args.business_map)
-    facts, audit, raw_annotated = build_daily_facts(raw, allowlist, names)
+    virtual_binding_path = args.virtual_bindings or latest_virtual_binding_path()
+    virtual_bindings = load_virtual_bindings(virtual_binding_path)
+    facts, audit, raw_annotated = build_daily_facts(raw, allowlist, names, virtual_bindings)
     outcomes_path = args.output_dir / "multibusiness_outcomes_large_mainstream_v3_daily.csv"
     audit_path = args.output_dir / "node_day_sampling_audit_v3.csv"
     audit_raw_path = args.output_dir / "node_day_sampling_excluded_raw_v3.csv"
@@ -791,7 +961,11 @@ def main() -> int:
     status_counts = audit["status"].value_counts().to_dict()
     business_support = (
         facts.groupby(["business", "business_name"], dropna=False)
-        .agg(node_days=("node_id", "size"), nodes=("node_id", "nunique"))
+        .agg(
+            node_days=("node_id", "size"),
+            effective_run_support=("sample_weight", "sum"),
+            nodes=("node_id", "nunique"),
+        )
         .reset_index()
         .sort_values(["node_days", "nodes"], ascending=False)
     )
@@ -799,12 +973,13 @@ def main() -> int:
     business_support.to_csv(support_path, index=False)
     metrics = json.loads((artifacts["v2_dir"] / "v2_model_metrics.json").read_text(encoding="utf-8"))
     summary = {
-        "version": "v3_daily_single_active_business",
+        "version": "v3.1_daily_weighted_virtual_bindings",
         "date_window": {"start": start_day, "end": end_day},
         "candidate_large_nodes": len(candidate_ids),
         "raw_rows": len(raw),
         "raw_node_days": int(audit.shape[0]),
         "clean_node_days": len(facts),
+        "clean_effective_run_support": float(facts["sample_weight"].sum()),
         "clean_nodes": int(facts["node_id"].nunique()),
         "clean_businesses": int(facts["business"].nunique()),
         "sampling_status_counts": {str(key): int(value) for key, value in status_counts.items()},
@@ -812,10 +987,18 @@ def main() -> int:
             "active": "state=online AND stage=inService",
             "qiniu_canonical_business": QINIU_BUSINESS_ID,
             "qiniu_canonical_name": QINIU_BUSINESS_NAME,
+            "virtual_binding_source": str(virtual_binding_path or ""),
+            "virtual_businesses_loaded": len(virtual_bindings),
+            "virtual_resolution_policy": (
+                "resolve by unique financial, active-real, or vendor-suggestion evidence; "
+                "exclude the node-day when resolution is ambiguous"
+            ),
             "multiple_active_business_policy": "exclude whole node-day and write audit rows",
             "non_mainstream_policy": "not a candidate; active overlap excludes the node-day",
+            "delivery_type_policy": "dedicated and aggregation are both eligible; no hard gate",
             "schedule_isps_empty_policy": "empty means the node ISP (local-network scheduling)",
             "transprov_policy": "empty/0 means local province; 100 means cross-province; other values are excluded",
+            "repeat_day_weight": "1 / consecutive valid days in the same node-business run",
         },
         "target": {
             "miner_income": "cost_finalAmount",

@@ -121,6 +121,70 @@ class V3DailyBusinessTrainingTest(unittest.TestCase):
         self.assertTrue(facts.empty)
         self.assertEqual(audit.iloc[0]["status"], "excluded_invalid_transprov_rate")
 
+    def test_virtual_business_is_resolved_by_unique_real_financial_row(self) -> None:
+        raw = pd.DataFrame([
+            {
+                "nodeId": "n1", "day": "2026-09-01", "customerId": "90000001",
+                "state": "online", "stage": "inService", "buildBandwidth": 500,
+                "cost_finalAmount": 10, "revenue_finalAmount": 0,
+            },
+            {
+                "nodeId": "n1", "day": "2026-09-01", "customerId": "10000064",
+                "state": "", "stage": "", "buildBandwidth": 500,
+                "cost_finalAmount": 0, "revenue_finalAmount": 20,
+            },
+        ])
+        bindings = {"90000001": {"10000064", "10000069"}}
+
+        facts, audit, _ = v3.build_daily_facts(raw, self.allowlist, {}, bindings)
+
+        self.assertEqual(audit.iloc[0]["status"], "clean")
+        self.assertEqual(facts.iloc[0]["business"], "10000064")
+        self.assertEqual(facts.iloc[0]["cum_cost_7d"], 10)
+        self.assertEqual(facts.iloc[0]["cum_revenue_7d"], 20)
+
+    def test_ambiguous_virtual_business_excludes_whole_day(self) -> None:
+        raw = pd.DataFrame([{
+            "nodeId": "n1", "day": "2026-09-01", "customerId": "90000001",
+            "state": "online", "stage": "inService", "buildBandwidth": 500,
+            "cost_finalAmount": 10, "revenue_finalAmount": 0,
+        }] + [
+            {
+                "nodeId": "n1", "day": "2026-09-01", "customerId": business,
+                "state": "", "stage": "", "buildBandwidth": 500,
+                "cost_finalAmount": 0, "revenue_finalAmount": 20,
+            }
+            for business in ["10000064", "10000069"]
+        ])
+        bindings = {"90000001": {"10000064", "10000069"}}
+
+        facts, audit, _ = v3.build_daily_facts(raw, self.allowlist, {}, bindings)
+
+        self.assertTrue(facts.empty)
+        self.assertEqual(
+            audit.iloc[0]["status"],
+            "excluded_ambiguous_virtual_business_binding",
+        )
+
+    def test_consecutive_business_days_share_one_unit_of_weight(self) -> None:
+        facts = pd.DataFrame([
+            {"node_id": "n1", "business": "A", "sample_day": "2026-09-01"},
+            {"node_id": "n1", "business": "A", "sample_day": "2026-09-02"},
+            {"node_id": "n1", "business": "A", "sample_day": "2026-09-03"},
+            {"node_id": "n1", "business": "A", "sample_day": "2026-09-05"},
+            {"node_id": "n1", "business": "B", "sample_day": "2026-09-06"},
+            {"node_id": "n1", "business": "B", "sample_day": "2026-09-07"},
+        ])
+
+        weighted = v3.add_consecutive_sample_weights(facts)
+
+        self.assertEqual(weighted["consecutive_valid_days"].tolist(), [3, 3, 3, 1, 2, 2])
+        self.assertEqual(weighted["sample_weight"].round(6).tolist(), [
+            0.333333, 0.333333, 0.333333, 1.0, 0.5, 0.5,
+        ])
+        run_weights = weighted.groupby("consecutive_business_run")["sample_weight"].sum()
+        self.assertTrue((run_weights.round(6) == 1.0).all())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -406,9 +406,11 @@ def prepare_pairs(path: Path, business_map: Path | None = None) -> pd.DataFrame:
         "cum_revenue_7d",
         "cum_profit_7d",
         "outcome_distinct_days",
+        "sample_weight",
     ]:
         if column in pairs.columns:
             pairs[column] = pd.to_numeric(pairs[column], errors="coerce").fillna(0.0)
+    pairs["sample_weight"] = v1.sample_weights(pairs)
     return add_buckets(pairs)
 
 
@@ -434,7 +436,9 @@ def load_business_risk_profiles(path: Path | None) -> dict[str, dict[str, Any]]:
 
 
 def candidate_businesses(pairs: pd.DataFrame, min_business_support: int) -> list[str]:
-    support = pairs["business"].value_counts()
+    work = pairs[["business"]].copy()
+    work["sample_weight"] = v1.sample_weights(pairs)
+    support = work.groupby("business", dropna=False)["sample_weight"].sum()
     return sorted(support[support >= min_business_support].index.astype(str).tolist())
 
 
@@ -502,6 +506,7 @@ def fit_v2_model(
     rank_score_weights: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     train = train_pairs.copy()
+    train["sample_weight"] = v1.sample_weights(train)
     candidates = candidate_businesses(train, min_business_support)
     if not candidates:
         raise RuntimeError("No candidate business meets min support.")
@@ -511,29 +516,41 @@ def fit_v2_model(
     train_node_count = int(train["node_id"].nunique())
     train_group_count = int(train["_comparison_group_id"].nunique())
 
-    global_rows = (
-        train.groupby("business", dropna=False)
-        .agg(
-            pair_support=("combined_score", "size"),
-            score=("combined_score", "mean"),
-            miner_score=("miner_score_norm", "mean"),
-            operator_score=("operator_score_norm", "mean"),
-            cum_cost_7d=("cum_cost_7d", "mean"),
-            cum_revenue_7d=("cum_revenue_7d", "mean"),
-            cum_profit_7d=("cum_profit_7d", "mean"),
-            business_name=("business_name", latest_nonempty),
-        )
+    global_rows = v1.weighted_group_summary(
+        train,
+        ["business"],
+        [
+            "combined_score",
+            "miner_score_norm",
+            "operator_score_norm",
+            "cum_cost_7d",
+            "cum_revenue_7d",
+            "cum_profit_7d",
+        ],
+    ).rename(columns={
+        "effective_support": "pair_support",
+        "combined_score": "score",
+        "miner_score_norm": "miner_score",
+        "operator_score_norm": "operator_score",
+    })
+    global_names = (
+        train.groupby("business", dropna=False)["business_name"]
+        .agg(latest_nonempty)
+        .rename("business_name")
         .reset_index()
     )
-    best_counts = best["business"].value_counts().to_dict()
+    global_rows = global_rows.merge(global_names, on="business", how="left")
+    best_counts = best.groupby("business", dropna=False)["sample_weight"].sum().to_dict()
+    train_group_weight = float(best["sample_weight"].sum())
     global_scores: dict[str, dict[str, Any]] = {}
     for row in global_rows.to_dict(orient="records"):
         business = clean_cell(row["business"])
-        best_support = int(best_counts.get(business, 0))
+        best_support = float(best_counts.get(business, 0.0))
         global_scores[business] = {
-            "pair_support": int(row["pair_support"]),
+            "pair_support": float(row["pair_support"]),
+            "raw_pair_support": int(row["raw_support"]),
             "best_support": best_support,
-            "best_rate": best_support / max(train_group_count, 1),
+            "best_rate": best_support / max(train_group_weight, 1e-12),
             "score": float(row["score"]),
             "miner_score": float(row["miner_score"]),
             "operator_score": float(row["operator_score"]),
@@ -552,21 +569,27 @@ def fit_v2_model(
         available_levels.append({"name": name, "fields": fields, "weight": weight})
         pair_work = train.copy()
         pair_work["_segment_key"] = pair_work.apply(lambda row: segment_key(row, fields), axis=1)
-        pair_stats = (
-            pair_work.groupby(["_segment_key", "business"], dropna=False)
-            .agg(score=("combined_score", "mean"), pair_support=("combined_score", "size"))
-            .reset_index()
-        )
+        pair_stats = v1.weighted_group_summary(
+            pair_work,
+            ["_segment_key", "business"],
+            ["combined_score"],
+        ).rename(columns={
+            "combined_score": "score",
+            "effective_support": "pair_support",
+        })
         best_work = best.copy()
         best_work["_segment_key"] = best_work.apply(lambda row: segment_key(row, fields), axis=1)
-        segment_nodes = best_work.groupby("_segment_key")["_comparison_group_id"].nunique().to_dict()
+        segment_nodes = best_work.groupby("_segment_key")["sample_weight"].sum().to_dict()
         best_stats = (
             best_work.groupby(["_segment_key", "business"], dropna=False)
-            .agg(best_support=("_comparison_group_id", "nunique"))
+            .agg(
+                best_support=("sample_weight", "sum"),
+                raw_best_support=("_comparison_group_id", "nunique"),
+            )
             .reset_index()
         )
         best_lookup = {
-            (str(row["_segment_key"]), str(row["business"])): int(row["best_support"])
+            (str(row["_segment_key"]), str(row["business"])): float(row["best_support"])
             for row in best_stats.to_dict(orient="records")
         }
         level_rows: dict[str, dict[str, Any]] = {}
@@ -575,21 +598,22 @@ def fit_v2_model(
             business = clean_cell(row["business"])
             level_rows.setdefault(key, {})[business] = {
                 "score": float(row["score"]),
-                "pair_support": int(row["pair_support"]),
+                "pair_support": float(row["pair_support"]),
+                "raw_pair_support": int(row["raw_support"]),
                 "best_support": best_lookup.get((key, business), 0),
-                "segment_nodes": int(segment_nodes.get(key, 0)),
+                "segment_nodes": float(segment_nodes.get(key, 0.0)),
             }
         for key, business_rows in level_rows.items():
             ranked = sorted(
                 business_rows.items(),
                 key=lambda item: (
-                    -int(item[1].get("best_support", 0)),
+                    -float(item[1].get("best_support", 0)),
                     -float(item[1].get("score", 0.0)),
                     item[0],
                 ),
             )
             for rank, (business, info) in enumerate(ranked, 1):
-                if int(info.get("best_support", 0)) >= champion_min_support:
+                if float(info.get("best_support", 0)) >= champion_min_support:
                     info["champion_rank"] = rank
         segment_payload[name] = level_rows
 
@@ -600,6 +624,7 @@ def fit_v2_model(
         "candidate_businesses": candidates,
         "train_node_count": train_node_count,
         "train_comparison_group_count": train_group_count,
+        "train_effective_group_support": train_group_weight,
         "global_scores": global_scores,
         "segment_levels": available_levels,
         "segments": segment_payload,
@@ -607,6 +632,7 @@ def fit_v2_model(
         "best_alpha": float(best_alpha),
         "champion_min_support": int(champion_min_support),
         "min_business_support": int(min_business_support),
+        "sample_weight_policy": "1 / consecutive valid days in the same node-business run",
         "rank_score_weights": rank_score_weights or dict(RANK_SCORE_WEIGHTS),
         "feature_fields": feature_fields or [],
         "business_risk_profiles": business_risk_profiles or {},
@@ -623,7 +649,7 @@ def score_one_business(row: dict[str, Any], business: str, model: dict[str, Any]
     alpha = float(model.get("smoothing_alpha", 30.0))
     best_alpha = float(model.get("best_alpha", 50.0))
     best_source = "global"
-    best_source_support = int(global_info.get("best_support", 0))
+    best_source_support = float(global_info.get("best_support", 0))
     best_source_rate = float(global_info.get("best_rate", 0.0))
     best_source_weight = 1.0
     champion_score = 0.0
@@ -636,15 +662,15 @@ def score_one_business(row: dict[str, Any], business: str, model: dict[str, Any]
         if not info:
             continue
         weight = float(level.get("weight", 1.0))
-        pair_support = int(info.get("pair_support", 0))
+        pair_support = float(info.get("pair_support", 0))
         segment_score = float(info.get("score", global_info["score"]))
         smoothed_score = (
             segment_score * pair_support + float(global_info["score"]) * alpha
         ) / (pair_support + alpha)
         score_terms.append((smoothed_score, weight * math.log1p(pair_support), level["name"]))
 
-        segment_nodes = int(info.get("segment_nodes", 0))
-        best_support = int(info.get("best_support", 0))
+        segment_nodes = float(info.get("segment_nodes", 0))
+        best_support = float(info.get("best_support", 0))
         prior_rate = float(global_info.get("best_rate", 0.0))
         smoothed_best_rate = (best_support + best_alpha * prior_rate) / (segment_nodes + best_alpha)
         best_weight = weight * math.log1p(segment_nodes)
@@ -734,9 +760,9 @@ def recommendation_confidence_flags(score: dict[str, Any], model: dict[str, Any]
     if clean_cell(score.get("source")) == "global":
         flags.append(("medium", "no matched profile segment; using global fallback"))
     min_best_support = int(model.get("risk_min_best_support", 3))
-    support = int(score.get("support", 0) or 0)
+    support = float(score.get("support", 0) or 0)
     if 0 < support < min_best_support:
-        flags.append(("medium", f"matched segment best support is low: support={support}"))
+        flags.append(("medium", f"matched segment best support is low: support={support:.3g}"))
     if not clean_cell(score.get("business_name")):
         flags.append(("medium", "business name missing from Superset mapping"))
     return flags
@@ -933,8 +959,10 @@ def evaluate_model(test_pairs: pd.DataFrame, test_nodes: pd.DataFrame, model: di
     hit1: list[bool] = []
     hit3: list[bool] = []
     ndcg3: list[float] = []
+    metric_weights: list[float] = []
     regrets: list[float] = []
-    observed_coverage = 0
+    regret_weights: list[float] = []
+    observed_coverage_weight = 0.0
     top1_counts: dict[str, int] = {}
 
     for true_row in true_best.to_dict(orient="records"):
@@ -954,6 +982,8 @@ def evaluate_model(test_pairs: pd.DataFrame, test_nodes: pd.DataFrame, model: di
         true_business = clean_cell(true_row["business"])
         hit1.append(top_businesses[0] == true_business)
         hit3.append(true_business in set(top_businesses))
+        weight = float(true_row.get("sample_weight", 1.0) or 1.0)
+        metric_weights.append(weight)
 
         group_outcomes = outcomes_by_group[group_id]
         best_score = float(group_outcomes["combined_score"].max())
@@ -969,20 +999,27 @@ def evaluate_model(test_pairs: pd.DataFrame, test_nodes: pd.DataFrame, model: di
 
         selected = top_businesses[0]
         if selected in group_outcomes.index:
-            observed_coverage += 1
+            observed_coverage_weight += weight
             selected_score = float(group_outcomes.loc[selected, "combined_score"])
             regrets.append(max(0.0, (best_score - selected_score) / max(abs(best_score), 1e-9)))
+            regret_weights.append(weight)
 
     n_nodes = len(hit1)
+    effective_weight = float(sum(metric_weights))
     return {
         "n_nodes": n_nodes,
         "n_eval_groups": n_nodes,
         "n_eval_unique_nodes": int(true_best["node_id"].nunique()) if "node_id" in true_best else 0,
-        "hit_rate_at_1": float(np.mean(hit1)) if hit1 else 0.0,
-        "hit_rate_at_3": float(np.mean(hit3)) if hit3 else 0.0,
-        "ndcg_at_3": float(np.mean(ndcg3)) if ndcg3 else 0.0,
-        "top1_observed_coverage": observed_coverage / n_nodes if n_nodes else 0.0,
-        "observed_regret": float(np.mean(regrets)) if regrets else None,
+        "effective_eval_weight": effective_weight,
+        "hit_rate_at_1": float(np.average(hit1, weights=metric_weights)) if hit1 else 0.0,
+        "hit_rate_at_3": float(np.average(hit3, weights=metric_weights)) if hit3 else 0.0,
+        "ndcg_at_3": float(np.average(ndcg3, weights=metric_weights)) if ndcg3 else 0.0,
+        "top1_observed_coverage": (
+            observed_coverage_weight / effective_weight if effective_weight else 0.0
+        ),
+        "observed_regret": (
+            float(np.average(regrets, weights=regret_weights)) if regrets else None
+        ),
         "top1_distribution": dict(sorted(top1_counts.items(), key=lambda item: item[1], reverse=True)[:20]),
     }
 
@@ -1037,6 +1074,7 @@ def command_build(args: argparse.Namespace) -> int:
         "test": metrics,
         "diagnostics": {
             "pair_rows": int(len(pairs)),
+            "pair_effective_support": float(v1.sample_weights(pairs).sum()),
             "train_nodes": int(len(train_nodes)),
             "test_nodes": int(len(test_nodes)),
             "comparison_groups": int(add_comparison_group_id(pairs)["_comparison_group_id"].nunique()),

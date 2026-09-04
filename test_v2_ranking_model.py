@@ -256,6 +256,37 @@ class V2RankingSmokeTest(unittest.TestCase):
 
 
 class V2RankingUnitTest(unittest.TestCase):
+    def test_fit_uses_effective_run_weight_instead_of_raw_day_count(self) -> None:
+        pairs = pd.DataFrame([
+            {
+                "node_id": "n1", "outcome_group_id": "g1", "business": "100",
+                "business_name": "业务A", "combined_score": 0.0,
+                "miner_score_norm": 0.0, "operator_score_norm": 0.0,
+                "cum_cost_7d": 0.0, "cum_revenue_7d": 0.0, "cum_profit_7d": 0.0,
+                "sample_weight": 0.25,
+            },
+            {
+                "node_id": "n1", "outcome_group_id": "g2", "business": "100",
+                "business_name": "业务A", "combined_score": 1.0,
+                "miner_score_norm": 1.0, "operator_score_norm": 1.0,
+                "cum_cost_7d": 10.0, "cum_revenue_7d": 20.0, "cum_profit_7d": 10.0,
+                "sample_weight": 0.75,
+            },
+        ])
+
+        model = ranking.fit_v2_model(
+            pairs,
+            min_business_support=1,
+            smoothing_alpha=1,
+            best_alpha=1,
+            champion_min_support=1,
+        )
+
+        score = model["global_scores"]["100"]
+        self.assertEqual(score["raw_pair_support"], 2)
+        self.assertAlmostEqual(score["pair_support"], 1.0)
+        self.assertAlmostEqual(score["score"], 0.75)
+
     def test_business_display_name_uses_readable_missing_label(self) -> None:
         self.assertEqual(ranking.business_display_name("10000251", ""), "未命名业务")
         self.assertEqual(ranking.business_display_name("10000251", "business_id:10000251"), "未命名业务")

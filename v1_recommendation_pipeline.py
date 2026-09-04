@@ -87,7 +87,7 @@ class Score:
     business: str
     score: float
     source: str
-    support: int
+    support: float
     business_name: str = ""
     miner_score: float | None = None
     operator_score: float | None = None
@@ -348,6 +348,52 @@ def effective_bandwidth_mbps(frame: pd.DataFrame, floor_mbps: float = 1.0) -> pd
     return construction_bandwidth_mbps(frame, floor_mbps=floor_mbps)
 
 
+def sample_weights(frame: pd.DataFrame) -> pd.Series:
+    if "sample_weight" not in frame.columns:
+        return pd.Series(1.0, index=frame.index, dtype=float)
+    values = pd.to_numeric(frame["sample_weight"], errors="coerce")
+    return values.where(values.gt(0) & np.isfinite(values), 1.0).astype(float)
+
+
+def weighted_group_summary(
+    frame: pd.DataFrame,
+    group_fields: list[str],
+    value_fields: list[str],
+) -> pd.DataFrame:
+    work = frame.copy()
+    work["_sample_weight"] = sample_weights(work)
+    for field in value_fields:
+        work[f"_weighted_{field}"] = (
+            pd.to_numeric(work[field], errors="coerce").fillna(0.0)
+            * work["_sample_weight"]
+        )
+    aggregations: dict[str, tuple[str, str]] = {
+        "raw_support": ("_sample_weight", "size"),
+        "effective_support": ("_sample_weight", "sum"),
+    }
+    aggregations.update({
+        f"_weighted_{field}": (f"_weighted_{field}", "sum")
+        for field in value_fields
+    })
+    output = work.groupby(group_fields, dropna=False).agg(**aggregations).reset_index()
+    for field in value_fields:
+        output[field] = output[f"_weighted_{field}"] / output["effective_support"].clip(lower=1e-12)
+        output = output.drop(columns=[f"_weighted_{field}"])
+    return output
+
+
+def weighted_quantile(values: pd.Series, weights: pd.Series, quantile: float) -> float:
+    numeric = pd.to_numeric(values, errors="coerce")
+    numeric_weights = pd.to_numeric(weights, errors="coerce")
+    valid = numeric.notna() & numeric_weights.gt(0) & np.isfinite(numeric_weights)
+    if not valid.any():
+        return float("nan")
+    ordered = pd.DataFrame({"value": numeric[valid], "weight": numeric_weights[valid]}).sort_values("value")
+    cumulative = ordered["weight"].cumsum()
+    target = quantile * float(ordered["weight"].sum())
+    return float(ordered.loc[cumulative.ge(target), "value"].iloc[0])
+
+
 def prepare_outcomes(outcomes: pd.DataFrame, target_mode: str = TARGET_MODE_ABSOLUTE) -> pd.DataFrame:
     if target_mode not in TARGET_MODES:
         raise ValueError(f"unsupported target_mode: {target_mode}")
@@ -357,10 +403,12 @@ def prepare_outcomes(outcomes: pd.DataFrame, target_mode: str = TARGET_MODE_ABSO
         "cum_revenue_7d",
         "outcome_distinct_days",
         "business_active_days",
+        "sample_weight",
         *TARGET_BANDWIDTH_COLUMNS,
     ]:
         if column in frame.columns:
             frame[column] = pd.to_numeric(frame[column], errors="coerce").fillna(0.0)
+    frame["sample_weight"] = sample_weights(frame)
     frame["cum_profit_7d"] = frame["cum_revenue_7d"] - frame["cum_cost_7d"]
     group_fields = outcome_comparison_fields(frame)
 
@@ -469,27 +517,37 @@ def fit_score_model(
 ) -> dict[str, Any]:
     train = train_pairs.copy()
     train["business"] = train["business"].map(clean_cell)
-    support = train["business"].value_counts()
-    candidate_businesses = sorted(support[support >= min_business_support].index.astype(str).tolist())
+    train["sample_weight"] = sample_weights(train)
+    support = train.groupby("business", dropna=False)["sample_weight"].sum()
+    candidate_businesses = sorted(
+        support[support >= min_business_support].index.astype(str).tolist()
+    )
     if not candidate_businesses:
         raise RuntimeError("No business meets min support; lower --min-business-support.")
     train = train[train["business"].isin(candidate_businesses)].copy()
 
-    global_rows = (
-        train.groupby("business", dropna=False)
-        .agg(
-            score=("combined_score", "mean"),
-            support=("combined_score", "size"),
-            miner_score=("miner_score_norm", "mean"),
-            operator_score=("operator_score_norm", "mean"),
-            business_name=("business_name", latest_nonempty),
-        )
+    global_rows = weighted_group_summary(
+        train,
+        ["business"],
+        ["combined_score", "miner_score_norm", "operator_score_norm"],
+    ).rename(columns={
+        "combined_score": "score",
+        "miner_score_norm": "miner_score",
+        "operator_score_norm": "operator_score",
+    })
+    global_names = (
+        train.groupby("business", dropna=False)["business_name"]
+        .agg(latest_nonempty)
+        .rename("business_name")
         .reset_index()
     )
+    global_rows = global_rows.merge(global_names, on="business", how="left")
     global_scores = {
         str(row.business): {
             "score": float(row.score),
-            "support": int(row.support),
+            "support": float(row.effective_support),
+            "effective_support": float(row.effective_support),
+            "raw_support": int(row.raw_support),
             "miner_score": float(row.miner_score),
             "operator_score": float(row.operator_score),
             "business_name": clean_cell(row.business_name),
@@ -506,21 +564,22 @@ def fit_score_model(
         available_levels.append({"name": level_name, "fields": fields})
         working = train.copy()
         working["_segment_key"] = working.apply(lambda row: segment_key(row, fields), axis=1)
-        grouped = (
-            working.groupby(["_segment_key", "business"], dropna=False)
-            .agg(
-                score=("combined_score", "mean"),
-                support=("combined_score", "size"),
-                miner_score=("miner_score_norm", "mean"),
-                operator_score=("operator_score_norm", "mean"),
-            )
-            .reset_index()
-        )
+        grouped = weighted_group_summary(
+            working,
+            ["_segment_key", "business"],
+            ["combined_score", "miner_score_norm", "operator_score_norm"],
+        ).rename(columns={
+            "combined_score": "score",
+            "miner_score_norm": "miner_score",
+            "operator_score_norm": "operator_score",
+        })
         level_payload: dict[str, dict[str, dict[str, Any]]] = {}
         for row in grouped.to_dict(orient="records"):
             level_payload.setdefault(str(row["_segment_key"]), {})[str(row["business"])] = {
                 "score": float(row["score"]),
-                "support": int(row["support"]),
+                "support": float(row["effective_support"]),
+                "effective_support": float(row["effective_support"]),
+                "raw_support": int(row["raw_support"]),
                 "miner_score": float(row["miner_score"]),
                 "operator_score": float(row["operator_score"]),
             }
@@ -536,6 +595,7 @@ def fit_score_model(
         "segments": segments,
         "smoothing_alpha": float(smoothing_alpha),
         "min_business_support": int(min_business_support),
+        "sample_weight_policy": "1 / consecutive valid days in the same node-business run",
         "feature_fields": model_feature_fields(contract),
         "current_business_source": CURRENT_BUSINESS_HISTORY_SOURCE,
     }
@@ -555,7 +615,7 @@ def score_business(row: pd.Series | dict[str, Any], business: str, model: dict[s
         key = segment_key(row, level["fields"])
         business_info = model.get("segments", {}).get(level_name, {}).get(key, {}).get(business)
         if business_info:
-            support = int(business_info["support"])
+            support = float(business_info["support"])
             segment_score = float(business_info["score"])
             segment_miner_score = float(business_info.get("miner_score", global_miner_score))
             segment_operator_score = float(business_info.get("operator_score", global_operator_score))
@@ -577,7 +637,7 @@ def score_business(row: pd.Series | dict[str, Any], business: str, model: dict[s
         business=business,
         score=global_score,
         source="global",
-        support=int(global_info["support"]),
+        support=float(global_info["support"]),
         business_name=clean_cell(global_info.get("business_name")),
         miner_score=global_miner_score,
         operator_score=global_operator_score,
@@ -835,8 +895,10 @@ def evaluate_recommendations(
     }
     hit1: list[bool] = []
     hit3: list[bool] = []
-    observed_coverage = 0
+    metric_weights: list[float] = []
+    observed_coverage_weight = 0.0
     regrets: list[float] = []
+    regret_weights: list[float] = []
     evaluated = 0
     for true_row in true_best.to_dict(orient="records"):
         node_id = clean_cell(true_row.get("node_id"))
@@ -852,25 +914,35 @@ def evaluate_recommendations(
         true_business = clean_cell(true_row["business"])
         hit1.append(bool(top_businesses and top_businesses[0] == true_business))
         hit3.append(true_business in set(top_businesses))
+        weight = float(true_row.get("sample_weight", 1.0) or 1.0)
+        metric_weights.append(weight)
 
         group_outcomes = outcomes_by_group.get(group_id)
         if group_outcomes is None:
             continue
         selected = top_businesses[0] if top_businesses else ""
         if selected in group_outcomes.index:
-            observed_coverage += 1
+            observed_coverage_weight += weight
             best_score = float(group_outcomes["combined_score"].max())
             selected_score = float(group_outcomes.loc[selected, "combined_score"])
             regrets.append(max(0.0, (best_score - selected_score) / max(abs(best_score), 1e-9)))
+            regret_weights.append(weight)
+
+    effective_weight = float(sum(metric_weights))
 
     return {
         "n_nodes": evaluated,
         "n_eval_groups": evaluated,
         "n_eval_unique_nodes": int(true_best["node_id"].nunique()) if "node_id" in true_best else 0,
-        "hit_rate_at_1": float(np.mean(hit1)) if hit1 else 0.0,
-        "hit_rate_at_3": float(np.mean(hit3)) if hit3 else 0.0,
-        "top1_observed_coverage": observed_coverage / evaluated if evaluated else 0.0,
-        "observed_regret": float(np.mean(regrets)) if regrets else None,
+        "effective_eval_weight": effective_weight,
+        "hit_rate_at_1": float(np.average(hit1, weights=metric_weights)) if hit1 else 0.0,
+        "hit_rate_at_3": float(np.average(hit3, weights=metric_weights)) if hit3 else 0.0,
+        "top1_observed_coverage": (
+            observed_coverage_weight / effective_weight if effective_weight else 0.0
+        ),
+        "observed_regret": (
+            float(np.average(regrets, weights=regret_weights)) if regrets else None
+        ),
     }
 
 
@@ -1169,30 +1241,42 @@ def build_business_risk_profile(nodes: pd.DataFrame, pairs: pd.DataFrame) -> pd.
         best = best.merge(node_profile, on="node_id", how="left", sort=False)
     rows: list[dict[str, Any]] = []
     for (business, business_name), group in best.groupby(["business", "business_name"], dropna=False):
+        weights = sample_weights(group)
+        effective_support = float(weights.sum())
+
+        def weighted_mean(field: str) -> float:
+            values = pd.to_numeric(group[field], errors="coerce").fillna(0.0)
+            return float(np.average(values, weights=weights))
+
         item: dict[str, Any] = {
             "business": clean_cell(business),
             "business_name": clean_cell(business_name),
             "support_nodes": int(group["node_id"].nunique()),
-            "combined_score_mean": float(pd.to_numeric(group["combined_score"], errors="coerce").mean()),
-            "cum_cost_7d_mean": float(pd.to_numeric(group["cum_cost_7d"], errors="coerce").mean()),
-            "cum_revenue_7d_mean": float(pd.to_numeric(group["cum_revenue_7d"], errors="coerce").mean()),
-            "cum_profit_7d_mean": float(pd.to_numeric(group["cum_profit_7d"], errors="coerce").mean()),
+            "raw_support": int(len(group)),
+            "effective_support": effective_support,
+            "combined_score_mean": weighted_mean("combined_score"),
+            "cum_cost_7d_mean": weighted_mean("cum_cost_7d"),
+            "cum_revenue_7d_mean": weighted_mean("cum_revenue_7d"),
+            "cum_profit_7d_mean": weighted_mean("cum_profit_7d"),
         }
         for field in profile_fields:
-            values = pd.to_numeric(group[field], errors="coerce").dropna()
-            item[f"{field}_count"] = int(len(values))
-            if values.empty:
+            values = pd.to_numeric(group[field], errors="coerce")
+            valid = values.notna()
+            field_weights = weights[valid]
+            item[f"{field}_raw_count"] = int(valid.sum())
+            item[f"{field}_count"] = float(field_weights.sum())
+            if not valid.any():
                 item[f"{field}_p05"] = ""
                 item[f"{field}_p50"] = ""
                 item[f"{field}_p90"] = ""
                 item[f"{field}_p95"] = ""
                 item[f"{field}_max"] = ""
                 continue
-            item[f"{field}_p05"] = float(values.quantile(0.05))
-            item[f"{field}_p50"] = float(values.quantile(0.50))
-            item[f"{field}_p90"] = float(values.quantile(0.90))
-            item[f"{field}_p95"] = float(values.quantile(0.95))
-            item[f"{field}_max"] = float(values.max())
+            item[f"{field}_p05"] = weighted_quantile(values, weights, 0.05)
+            item[f"{field}_p50"] = weighted_quantile(values, weights, 0.50)
+            item[f"{field}_p90"] = weighted_quantile(values, weights, 0.90)
+            item[f"{field}_p95"] = weighted_quantile(values, weights, 0.95)
+            item[f"{field}_max"] = float(values[valid].max())
         rows.append(item)
     output = pd.DataFrame(rows)
     if not output.empty:
@@ -1285,6 +1369,7 @@ def command_build(args: argparse.Namespace) -> int:
             "node_rows": int(len(nodes)),
             "outcome_rows": int(len(outcomes)),
             "training_pair_rows": int(len(pairs)),
+            "training_effective_support": float(sample_weights(pairs).sum()),
             "train_nodes": int(len(train_nodes)),
             "test_nodes": int(len(test_nodes)),
             "candidate_businesses": int(len(model["candidate_businesses"])),

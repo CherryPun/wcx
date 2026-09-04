@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>大节点业务收益推荐 V4</title>
+  <style>
+    :root {
+      --bg: #eef1f4;
+      --surface: #ffffff;
+      --ink: #18202a;
+      --muted: #687587;
+      --line: #d8dee6;
+      --accent: #087f8c;
+      --accent-soft: #e4f3f4;
+      --good: #147d47;
+      --warn: #9a6700;
+      --bad: #c4332b;
+      --nav: #202a35;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+    header {
+      min-height: 72px;
+      padding: 14px 24px;
+      background: var(--nav);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    h1 { margin: 0; font-size: 22px; font-weight: 650; }
+    header p { margin: 5px 0 0; color: #bcc7d3; font-size: 13px; }
+    .credibility { text-align: right; }
+    .credibility strong { display: block; font-size: 16px; }
+    nav {
+      height: 46px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      padding: 0 24px;
+      display: flex;
+      align-items: end;
+      gap: 24px;
+    }
+    .tab-button {
+      height: 46px;
+      border: 0;
+      border-bottom: 3px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0 2px;
+    }
+    .tab-button.active { color: var(--accent); border-bottom-color: var(--accent); }
+    main { padding: 18px 24px 28px; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(140px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .metric {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 13px 14px;
+      min-height: 82px;
+    }
+    .metric span { color: var(--muted); font-size: 12px; }
+    .metric strong { display: block; margin-top: 8px; font-size: 22px; font-weight: 650; }
+    .band {
+      background: var(--surface);
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      padding: 16px 0;
+      margin-bottom: 16px;
+    }
+    .band h2, .section-title { margin: 0 0 10px; font-size: 16px; }
+    .band p { margin: 7px 0; color: var(--muted); line-height: 1.65; }
+    .status { font-weight: 650; }
+    .status.high { color: var(--good); }
+    .status.medium { color: var(--warn); }
+    .status.low { color: var(--bad); }
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(220px, 1.6fr) repeat(7, minmax(130px, 1fr));
+      gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    input, select {
+      width: 100%;
+      height: 36px;
+      border: 1px solid #bcc6d1;
+      border-radius: 4px;
+      background: #fff;
+      color: var(--ink);
+      padding: 0 10px;
+      font: inherit;
+    }
+    input:focus, select:focus { outline: 2px solid #9ad3d8; border-color: var(--accent); }
+    .table-wrap {
+      overflow: auto;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+    table { width: 100%; border-collapse: collapse; min-width: 980px; }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f6f8fa;
+      color: #445063;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 650;
+      padding: 10px;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    td {
+      padding: 10px;
+      border-bottom: 1px solid #e5e9ee;
+      vertical-align: top;
+      line-height: 1.45;
+    }
+    tbody tr:hover { background: #f7fbfb; }
+    .node-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .sub { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .business-name { font-weight: 650; }
+    .badge {
+      display: inline-block;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 12px;
+      font-weight: 650;
+      background: #edf0f4;
+      color: #536071;
+    }
+    .badge.high { background: #e4f4eb; color: var(--good); }
+    .badge.medium { background: #fff1cf; color: var(--warn); }
+    .badge.low { background: #fde8e7; color: var(--bad); }
+    .action-stop { color: var(--bad); font-weight: 650; }
+    .action-review { color: var(--warn); font-weight: 650; }
+    .pager {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 10px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-top: 0;
+    }
+    .icon-button {
+      width: 34px;
+      height: 32px;
+      border: 1px solid #bcc6d1;
+      border-radius: 4px;
+      background: #fff;
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .icon-button:disabled { opacity: .35; cursor: default; }
+    .bar-row {
+      display: grid;
+      grid-template-columns: minmax(180px, 260px) minmax(220px, 1fr) 90px;
+      gap: 12px;
+      align-items: center;
+      padding: 9px 0;
+      border-bottom: 1px solid #e5e9ee;
+    }
+    .bar-track { height: 12px; background: #e7ebef; border-radius: 3px; overflow: hidden; }
+    .bar-fill { height: 100%; background: var(--accent); }
+    .method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .method-grid ul { margin: 0; padding-left: 20px; line-height: 1.8; color: var(--muted); }
+    @media (max-width: 1100px) {
+      .metric-grid { grid-template-columns: repeat(3, 1fr); }
+      .toolbar { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 720px) {
+      header { align-items: flex-start; padding: 13px 14px; }
+      header .credibility { text-align: left; }
+      header { flex-direction: column; }
+      nav { padding: 0 14px; gap: 15px; overflow-x: auto; }
+      main { padding: 12px; }
+      .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .toolbar { grid-template-columns: 1fr 1fr; }
+      .method-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>大节点业务收益推荐 V4</h1>
+      <p id="date-window"></p>
+    </div>
+    <div class="credibility">
+      <span>当前模型可信度</span>
+      <strong id="credibility-label"></strong>
+    </div>
+  </header>
+  <nav>
+    <button class="tab-button active" data-tab="overview">模型概览</button>
+    <button class="tab-button" data-tab="nodes">节点推荐</button>
+    <button class="tab-button" data-tab="businesses">训练数据</button>
+    <button class="tab-button" data-tab="concentration">集中度</button>
+  </nav>
+  <main>
+    <section id="overview" class="tab-panel active">
+      <div class="metric-grid" id="overview-metrics"></div>
+      <div class="band">
+        <h2>时间外验证</h2>
+        <div class="method-grid">
+          <div id="validation-summary"></div>
+          <div id="dr-summary"></div>
+        </div>
+      </div>
+      <div class="band" id="model-comparison-band" hidden>
+        <h2>公平模型对照</h2>
+        <div class="method-grid" id="model-comparison-summary"></div>
+      </div>
+      <div class="band">
+        <h2>数据清洗</h2>
+        <div class="method-grid" id="sampling-summary"></div>
+      </div>
+      <div class="band">
+        <h2>可信度边界</h2>
+        <div class="method-grid">
+          <ul>
+            <li>收益目标为每日单位建设带宽矿主收益与平台利润。</li>
+            <li>最后7天严格后置，其中前3天校准区间、后4天测试。</li>
+            <li>预测区间只对历史实际运行业务进行了时间外覆盖验证。</li>
+          </ul>
+          <ul>
+            <li>没有运行过的候选业务仍是反事实估计，不能视为真实收益。</li>
+            <li>低覆盖、低历史分配概率或画像超范围时标记暂不推荐执行。</li>
+            <li>推荐只用于人工复核，禁止根据本报告自动切换业务。</li>
+            <li>换业务复核要求 Top1 的90%下界高于当前业务90%上界。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="nodes" class="tab-panel">
+      <div class="toolbar">
+        <input id="search" placeholder="节点 ID">
+        <select id="province-filter"><option value="">全部省份</option></select>
+        <select id="isp-filter"><option value="">全部运营商</option></select>
+        <select id="schedule-filter"><option value="">全部调度类型</option></select>
+        <select id="business-filter"><option value="">全部 Top1 业务</option></select>
+        <select id="confidence-filter"><option value="">全部可信度</option></select>
+        <select id="current-filter"><option value="">全部当前业务状态</option></select>
+        <select id="action-filter"><option value="">全部执行结论</option></select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>节点</th><th>画像</th><th>当前业务</th><th>结论</th><th>Top1</th><th>Top2</th><th>Top3</th>
+          </tr></thead>
+          <tbody id="node-body"></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <span id="node-count"></span>
+        <button class="icon-button" id="prev" title="上一页" aria-label="上一页">‹</button>
+        <span id="page-label"></span>
+        <button class="icon-button" id="next" title="下一页" aria-label="下一页">›</button>
+      </div>
+    </section>
+
+    <section id="businesses" class="tab-panel">
+      <h2 class="section-title">业务训练与验证情况</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>业务</th><th>是否候选</th><th>节点日</th><th>有效连续段</th><th>节点数</th>
+            <th>矿主单位收益</th><th>平台单位利润</th><th>测试有效样本</th>
+            <th>矿主 MAE / R²</th><th>平台 MAE / R²</th><th>90%区间覆盖</th>
+          </tr></thead>
+          <tbody id="business-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="concentration" class="tab-panel">
+      <div class="metric-grid" id="concentration-metrics"></div>
+      <div class="band" id="bars"></div>
+    </section>
+  </main>
+  <script src="v4_frontend_report_data.js"></script>
+  <script>
+    const payload = window.V4_REPORT_DATA || {summary:{}, recommendations:[], business_metrics:[], concentration:[]};
+    const summary = payload.summary || {};
+    const recommendations = payload.recommendations || [];
+    const businessMetrics = payload.business_metrics || [];
+    const concentration = payload.concentration || [];
+    const esc = value => String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));
+    const finite = value => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+    const num = (value, digits=3) => finite(value) ? Number(value).toFixed(digits) : "--";
+    const pct = value => finite(value) ? `${(Number(value)*100).toFixed(1)}%` : "--";
+    const integer = value => finite(value) ? Number(value).toLocaleString("zh-CN", {maximumFractionDigits:0}) : "--";
+    const label = level => ({high:"高", medium:"中", low:"低"}[level] || level || "--");
+
+    const dateWindow = summary.date_window || {};
+    document.getElementById("date-window").textContent = `${dateWindow.start || "--"} 至 ${dateWindow.end || "--"} · 日粒度加权收益模型`;
+    const credibility = summary.credibility || {};
+    const credibilityNode = document.getElementById("credibility-label");
+    credibilityNode.textContent = `${label(credibility.level)} · 仅人工决策`;
+    credibilityNode.className = `status ${credibility.level || "low"}`;
+
+    const metric = (name, value) => `<div class="metric"><span>${esc(name)}</span><strong>${esc(value)}</strong></div>`;
+    const train = summary.training_data || {};
+    const temporal = summary.temporal_validation || {};
+    const quality = summary.data_quality || {};
+    const currentComparison = summary.current_business_comparison || {};
+    document.getElementById("overview-metrics").innerHTML = [
+      metric("干净节点日", integer(train.raw_node_days)),
+      metric("有效连续段", integer(train.effective_run_support)),
+      metric("历史节点", integer(train.nodes)),
+      metric("候选业务", integer(train.candidate_businesses)),
+      metric("矿主区间覆盖", pct(temporal.miner_interval_coverage90)),
+      metric("平台区间覆盖", pct(temporal.platform_interval_coverage90)),
+      metric("双目标R²为正业务", `${integer(credibility.validated_businesses_positive_r2_for_both_targets)} / ${integer(credibility.validated_candidate_businesses)}`),
+      metric("平台区间跨零节点", integer(credibility.top1_platform_interval_crosses_zero_nodes)),
+      metric("当前业务快照", integer(currentComparison.snapshot_nodes)),
+      metric("当前业务非Top1", integer(currentComparison.model_current_not_top1_nodes)),
+      metric("可人工换业务复核", integer(currentComparison.review_switch_candidate_nodes)),
+    ].join("");
+    const windows = summary.temporal_windows || {};
+    document.getElementById("validation-summary").innerHTML = `
+      <p><strong>训练：</strong>${esc(windows.train_start)} 至 ${esc(windows.train_end)}</p>
+      <p><strong>校准：</strong>${esc(windows.calibration_start)} 至 ${esc(windows.calibration_end)}</p>
+      <p><strong>测试：</strong>${esc(windows.test_start)} 至 ${esc(windows.test_end)}</p>
+      <p><strong>矿主 MAE / R²：</strong>${num(temporal.miner?.mae,4)} / ${num(temporal.miner?.r2,3)}</p>
+      <p><strong>平台 MAE / R²：</strong>${num(temporal.platform?.mae,4)} / ${num(temporal.platform?.r2,3)}</p>`;
+    const ranking = summary.ranking_and_dr_diagnostics || {};
+    document.getElementById("dr-summary").innerHTML = `
+      <p><strong>历史业务 Top1 / Top3：</strong>${pct(ranking.observed_business_hit_at_1)} / ${pct(ranking.observed_business_hit_at_3)}</p>
+      <p><strong>策略命中历史业务：</strong>${pct(ranking.doubly_robust?.policy_observed_match_rate)}</p>
+      <p><strong>DR 矿主单位收益：</strong>${num(ranking.doubly_robust?.miner_unit_income,4)}</p>
+      <p><strong>DR 平台单位利润：</strong>${num(ranking.doubly_robust?.platform_unit_profit,4)}</p>
+      <p><strong>DR 修正有效样本：</strong>${num(ranking.doubly_robust?.correction_effective_sample_size,1)}</p>
+      <p><strong>Top1 平台点估计非正：</strong>${integer(credibility.top1_platform_point_nonpositive_nodes)} 个节点</p>`;
+    const comparison = summary.model_comparison || null;
+    if (comparison) {
+      const baseline = comparison.baseline || {};
+      const selected = comparison.selected || {};
+      const change = comparison.relative_change || {};
+      const sources = comparison.selected_sources || {};
+      const warm = comparison.warm_start_enabled || {};
+      document.getElementById("model-comparison-band").hidden = false;
+      document.getElementById("model-comparison-summary").innerHTML = `
+        <div>
+          <p><strong>矿主算法：</strong>${esc(sources.miner_unit_income || "--")} · 节点修正 ${warm.miner_unit_income ? "启用" : "关闭"}</p>
+          <p><strong>V4 → V5 矿主 R²：</strong>${num(baseline.miner?.r2,3)} → ${num(selected.miner?.r2,3)}</p>
+          <p><strong>矿主 RMSE 变化：</strong>${pct(change.miner_rmse)}</p>
+        </div>
+        <div>
+          <p><strong>平台算法：</strong>${esc(sources.platform_unit_profit || "--")} · 节点修正 ${warm.platform_unit_profit ? "启用" : "关闭"}</p>
+          <p><strong>V4 → V5 平台 R²：</strong>${num(baseline.platform?.r2,3)} → ${num(selected.platform?.r2,3)}</p>
+          <p><strong>平台 RMSE 变化：</strong>${pct(change.platform_rmse)}</p>
+        </div>`;
+    }
+    const statusNames = {
+      clean: "进入训练",
+      excluded_no_active_mainstream_business: "无在线服务中主流业务",
+      excluded_active_nonmainstream_overlap: "非主流业务重叠",
+      excluded_unattributed_financial_rows: "存在未归属财务行",
+      excluded_invalid_transprov_rate: "跨省比例异常",
+      excluded_inconsistent_transprov_rate: "同日跨省比例不一致",
+      excluded_multiple_active_mainstream_businesses: "同日多个主流业务",
+      excluded_zero_financial_outcome: "收支均为零"
+    };
+    const statusRows = Object.entries(quality.sampling_status_counts || {})
+      .map(([key,value]) => `<p><strong>${esc(statusNames[key] || key)}：</strong>${integer(value)} 节点日</p>`)
+      .join("");
+    document.getElementById("sampling-summary").innerHTML = `
+      <div>
+        <p><strong>原始业务行：</strong>${integer(quality.raw_rows)}</p>
+        <p><strong>原始节点日：</strong>${integer(quality.raw_node_days)}</p>
+        <p><strong>干净节点日：</strong>${integer(quality.clean_node_days)}（${pct(quality.clean_node_day_rate)}）</p>
+        <p><strong>剔除节点日：</strong>${integer(quality.excluded_node_days)}</p>
+      </div><div>${statusRows}</div>`;
+
+    document.querySelectorAll(".tab-button").forEach(button => button.addEventListener("click", () => {
+      document.querySelectorAll(".tab-button").forEach(item => item.classList.toggle("active", item === button));
+      document.querySelectorAll(".tab-panel").forEach(panel => panel.classList.toggle("active", panel.id === button.dataset.tab));
+    }));
+
+    const fillSelect = (id, values) => {
+      const select = document.getElementById(id);
+      [...new Set(values.filter(Boolean))].sort((a,b) => String(a).localeCompare(String(b), "zh-CN"))
+        .forEach(value => select.insertAdjacentHTML("beforeend", `<option value="${esc(value)}">${esc(value)}</option>`));
+    };
+    fillSelect("province-filter", recommendations.map(row => row.province));
+    fillSelect("isp-filter", recommendations.map(row => row.isp));
+    fillSelect("schedule-filter", recommendations.map(row => row.network_schedule_type));
+    fillSelect("business-filter", recommendations.map(row => row.business_name_top1));
+    fillSelect("confidence-filter", recommendations.map(row => row.recommendation_confidence));
+    fillSelect("action-filter", recommendations.map(row => row.recommendation_action));
+    const currentStatusNames = {
+      already_top1: "当前已是 Top1",
+      current_not_top1: "当前不是 Top1",
+      current_business_not_in_candidate_set: "当前业务不在候选集",
+      current_business_unknown: "未获取当前业务"
+    };
+    const currentFilter = document.getElementById("current-filter");
+    [...new Set(recommendations.map(row => row.current_business_status).filter(Boolean))]
+      .forEach(value => currentFilter.insertAdjacentHTML("beforeend", `<option value="${esc(value)}">${esc(currentStatusNames[value] || value)}</option>`));
+
+    const pageSize = 50;
+    let page = 1;
+    let filtered = recommendations;
+    const businessCell = (row, index) => {
+      const name = row[`business_name_top${index}`] || "--";
+      const confidence = row[`confidence_top${index}`] || "low";
+      return `<span class="business-name">${esc(name)}</span> <span class="badge ${confidence}">${label(confidence)}</span>
+        <span class="sub">业务ID ${esc(row[`business_top${index}`])} · 综合分 ${num(row[`combined_score_top${index}`])}</span>
+        <span class="sub">矿主 ${num(row[`miner_unit_income_top${index}`],4)} /Mbps · 平台 ${num(row[`platform_unit_profit_top${index}`],4)} /Mbps</span>
+        <span class="sub">预计日收益 ${num(row[`estimated_miner_income_1d_top${index}`],1)} · 平台利润 ${num(row[`estimated_platform_profit_1d_top${index}`],1)}</span>
+        <span class="sub">90%区间 矿主[${num(row[`miner_unit_low90_top${index}`],4)}, ${num(row[`miner_unit_high90_top${index}`],4)}] · 平台[${num(row[`platform_unit_low90_top${index}`],4)}, ${num(row[`platform_unit_high90_top${index}`],4)}]</span>
+        <span class="sub">有效支持 ${num(row[`local_effective_support_top${index}`],1)} · 历史分配 ${pct(row[`historical_assignment_probability_top${index}`])}</span>`;
+    };
+    const currentBusinessCell = row => {
+      if (!row.current_business) return `<span class="badge low">未获取</span>`;
+      const status = currentStatusNames[row.current_business_status] || row.current_business_status;
+      return `<span class="business-name">${esc(row.current_business_name || "未命名业务")}</span>
+        <span class="sub">业务ID ${esc(row.current_business)} · ${esc(status)}</span>
+        <span class="sub">快照日 ${esc(row.current_business_day || "--")} · 实际矿主 ${num(row.current_actual_miner_income_1d,1)} · 平台 ${num(row.current_actual_platform_profit_1d,1)}</span>
+        <span class="sub">模型预计 矿主 ${num(row.current_predicted_miner_unit_income,4)} /Mbps · 平台 ${num(row.current_predicted_platform_unit_profit,4)} /Mbps</span>`;
+    };
+    const renderNodes = () => {
+      const start = (page - 1) * pageSize;
+      const rows = filtered.slice(start, start + pageSize);
+      document.getElementById("node-body").innerHTML = rows.map(row => {
+        const actionClass = row.recommendation_action === "暂不推荐执行" ? "action-stop" : "action-review";
+        return `<tr>
+          <td><span class="node-id">${esc(row.node_id)}</span><span class="sub">建设带宽 ${integer(row.build_bandwidth_mbps)} Mbps</span></td>
+          <td>${esc(row.province)} · ${esc(row.isp)} · ${esc(row.network_schedule_type)}
+            <span class="sub">CPU ${esc(row.cpu_bucket)} · NAT ${esc(row.nattype)} · 内存 ${esc(row.memory_bucket)} · 磁盘 ${esc(row.disk_bucket)}</span>
+            <span class="sub">IPv6 ${esc(row.ipv6_capability)} · 带宽 ${esc(row.bandwidth_bucket)} · 压测满意度 ${num(row.packet_loss_satisfaction_pct,1)}%</span></td>
+          <td>${currentBusinessCell(row)}</td>
+          <td><span class="${actionClass}">${esc(row.recommendation_action)}</span><span class="sub">可信度 ${label(row.recommendation_confidence)} · Top1差距 ${num(row.top1_score_gap)}</span><span class="sub">${esc(row.recommendation_reason)}</span></td>
+          <td>${businessCell(row,1)}</td><td>${businessCell(row,2)}</td><td>${businessCell(row,3)}</td>
+        </tr>`;
+      }).join("") || `<tr><td colspan="7">无匹配节点</td></tr>`;
+      const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+      document.getElementById("node-count").textContent = `${integer(filtered.length)} 个节点`;
+      document.getElementById("page-label").textContent = `${page} / ${pages}`;
+      document.getElementById("prev").disabled = page <= 1;
+      document.getElementById("next").disabled = page >= pages;
+    };
+    const applyFilters = () => {
+      const query = document.getElementById("search").value.trim().toLowerCase();
+      const province = document.getElementById("province-filter").value;
+      const isp = document.getElementById("isp-filter").value;
+      const schedule = document.getElementById("schedule-filter").value;
+      const business = document.getElementById("business-filter").value;
+      const confidenceFilter = document.getElementById("confidence-filter").value;
+      const currentStatus = document.getElementById("current-filter").value;
+      const action = document.getElementById("action-filter").value;
+      filtered = recommendations.filter(row =>
+        (!query || String(row.node_id).toLowerCase().includes(query)) &&
+        (!province || row.province === province) && (!isp || row.isp === isp) &&
+        (!schedule || row.network_schedule_type === schedule) &&
+        (!business || row.business_name_top1 === business) &&
+        (!confidenceFilter || row.recommendation_confidence === confidenceFilter) &&
+        (!currentStatus || row.current_business_status === currentStatus) &&
+        (!action || row.recommendation_action === action));
+      page = 1;
+      renderNodes();
+    };
+    ["search","province-filter","isp-filter","schedule-filter","business-filter","confidence-filter","current-filter","action-filter"]
+      .forEach(id => document.getElementById(id).addEventListener(id === "search" ? "input" : "change", applyFilters));
+    document.getElementById("prev").addEventListener("click", () => { page = Math.max(1, page-1); renderNodes(); });
+    document.getElementById("next").addEventListener("click", () => { page += 1; renderNodes(); });
+    renderNodes();
+
+    document.getElementById("business-body").innerHTML = businessMetrics.map(row => `<tr>
+      <td><span class="business-name">${esc(row.business_name)}</span><span class="sub">${esc(row.business)}</span></td>
+      <td>${row.is_candidate ? '<span class="badge high">候选</span>' : '<span class="badge">仅审计</span>'}</td>
+      <td>${integer(row.raw_node_days)}</td><td>${num(row.effective_run_support,1)}</td><td>${integer(row.nodes)}</td>
+      <td>${num(row.weighted_miner_unit_income,4)}</td><td>${num(row.weighted_platform_unit_profit,4)}</td>
+      <td>${num(row.test_effective_support,1)}</td>
+      <td>${num(row.miner_mae,4)} / ${num(row.miner_r2,3)}</td>
+      <td>${num(row.platform_mae,4)} / ${num(row.platform_r2,3)}</td>
+      <td>${pct(row.miner_coverage90)} / ${pct(row.platform_coverage90)}</td>
+    </tr>`).join("");
+
+    const concentrationSummary = summary.recommendation_concentration || {};
+    document.getElementById("concentration-metrics").innerHTML = [
+      metric("集中度风险", label(concentrationSummary.concentration_risk)),
+      metric("最大 Top1 占比", pct(concentrationSummary.maximum_top1_share)),
+      metric("HHI", num(concentrationSummary.hhi,3)),
+      metric("有效业务数", num(concentrationSummary.effective_business_count,2)),
+      metric("Top1涉及业务", integer(concentrationSummary.top1_businesses_used)),
+      metric("归一化熵", num(concentrationSummary.normalized_entropy,3)),
+    ].join("");
+    document.getElementById("bars").innerHTML = `<h2>Top1业务分布</h2>` + concentration.map(row => `<div class="bar-row">
+      <span><strong>${esc(row.business_name_top1)}</strong><span class="sub">${esc(row.business_top1)}</span></span>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(0,Math.min(100,Number(row.share)*100))}%"></div></div>
+      <span>${pct(row.share)}</span>
+    </div>`).join("");
+  </script>
+</body>
+</html>

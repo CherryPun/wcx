@@ -417,6 +417,22 @@ class V1PipelineUnitTest(unittest.TestCase):
         ])
         self.assertEqual(pipeline.construction_bandwidth_mbps(frame).tolist(), [600.0, 800.0])
 
+    def test_weighted_group_summary_gives_each_run_its_effective_weight(self) -> None:
+        frame = pd.DataFrame([
+            {"business": "100", "combined_score": 0.0, "sample_weight": 0.25},
+            {"business": "100", "combined_score": 1.0, "sample_weight": 0.75},
+        ])
+
+        summary = pipeline.weighted_group_summary(
+            frame,
+            ["business"],
+            ["combined_score"],
+        ).iloc[0]
+
+        self.assertEqual(summary["raw_support"], 2)
+        self.assertAlmostEqual(summary["effective_support"], 1.0)
+        self.assertAlmostEqual(summary["combined_score"], 0.75)
+
 
 if __name__ == "__main__":
     unittest.main()
