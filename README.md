@@ -67,7 +67,7 @@ python 03_variant_ablation/stage_cost_improve.py
 
 ## 数据来源与重建
 
-数据从内网 Superset 现拉并本地处理：历史范围 2026-03-16 起、约 5% 节点抽样（后缀 00–0c）、满 7 天账。字段口径见 `05_shared_data/DATA_README.md`。
+数据从内网 Superset 现拉并本地处理：历史范围自 2026-03-16 起、至最近一次拉取（各源截至日不同，见 `05_shared_data/DATA_README.md`），约 5% 节点抽样（后缀 00–0c）、满 7 天账。字段口径见 `05_shared_data/DATA_README.md`。
 
 复现需要的 4 份数据：
 
