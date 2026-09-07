@@ -2,7 +2,7 @@
 
 给矿主节点的业务推荐：候选只从**相似节点真实跑过的业务**中取，按**矿主预测 7 天结算**为主序，平台利润与容量只做软约束，输出 Top1~3 与预测金额，定位为**候选/参考，不承诺最赚**。
 
-数据口径与 HRR 同源（7 天累计、5% 抽样、满 7 天账），验证使用时间外切分，与 yzx/RJ 的目标与产物均不同。
+数据口径：7 天累计、约 5% 节点抽样、满 7 天账；验证采用时间外切分。
 
 ## 目录关系
 
@@ -12,7 +12,7 @@
 03_variant_ablation/      v2(log1p) 与带宽辅助/金额误差消融（对照，非主版）
 04_report/                报告、交付说明、关键数字口径稿、交付索引、容量口径说明
 05_shared_data/           数据字段说明（DATA_README；成品 CSV 不入库，见 .gitignore）
-06_html/                  主版全节点推荐总览 + 推荐分布可视化（纯 SVG，离线可看）
+06_html/                  主版全节点推荐总览 + 推荐分布可视化（HTML 含 SVG，离线可看）
 requirements.txt          运行依赖
 .gitignore                数据/临时产物默认排除
 run_verify_all.py         一键复现校验（重跑 4 步并核对关键数字）
@@ -20,8 +20,7 @@ run_verify_all.py         一键复现校验（重跑 4 步并核对关键数字
 
 ### 严谨性说明
 
-- 本仓库**不含任何他人分支渲染的结果文件**。仓库内所有 CSV/JSON/HTML
-  均由本仓库脚本读取 `05_shared_data` 生成，可用 `run_verify_all.py` 复现。
+- 仓库内所有 CSV/JSON/HTML 均由本仓库脚本读取 `05_shared_data` 生成，可用 `run_verify_all.py` 复现。
 - `01`/`02`/`03` 中的 JSON 即各步骤的可复现指标快照；`_rerun/`（运行产物）不入库。
 - 无效或实验性方案（放大惩罚、单位带宽参照、受控容量模拟等）的**结论**
   保留在 `04_report`；相应脚本与中间产物已移出仓库并归档，避免混入无出处的数据。
@@ -52,7 +51,7 @@ python run_verify_all.py
 ## 运行说明
 
 - 主版、01 诊断、03 消融脚本均已改为**在交付目录直接运行**：数据读 `05_shared_data`，结果写各模块 `_rerun/`，不覆盖正式产物。
-- 直接运行（本机 Anaconda Python）：
+- 直接运行（Anaconda Python）：
 
 ```bash
 python 01_temporal_validation/stage_p0_temporal.py
@@ -68,7 +67,7 @@ python 03_variant_ablation/stage_cost_improve.py
 
 ## 数据来源与重建
 
-数据与 GitHub 三个分支**不同源、不同窗口，不可混用**。均为本机从内网 Superset 现拉并处理，历史范围 2026-03-16 起、约 5% 节点抽样（后缀 00–0c）、满 7 天账。字段口径见 `05_shared_data/DATA_README.md`。
+数据从内网 Superset 现拉并本地处理：历史范围 2026-03-16 起、约 5% 节点抽样（后缀 00–0c）、满 7 天账。字段口径见 `05_shared_data/DATA_README.md`。
 
 复现需要的 4 份数据：
 
@@ -93,4 +92,4 @@ python 03_variant_ablation/stage_cost_improve.py
 ## 数据
 
 - 主版与诊断使用 `05_shared_data` 下 4 份成品数据；字段说明见 `05_shared_data/DATA_README.md`。
-- 数据来源为 Superset 现拉宽表 + jarvis 节点画像回填，只在本机使用，不 push。
+- 数据来源为内网 Superset 现拉宽表 + jarvis 节点画像回填，不随版本库分发（重建方式见上）。

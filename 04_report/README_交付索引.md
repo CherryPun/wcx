@@ -1,6 +1,6 @@
 ﻿# wcx 交付索引
 
-> 本文件夹照 HRR 分支风格整理：主目录下按模块分版本子目录，每模块内放代码与结果。
+> 本索引说明仓库目录结构与各文件职责：代码按模块组织，数据集中在 `05_shared_data`，报告在 `04_report`。
 
 ## 目录
 
@@ -16,25 +16,24 @@ wcx/
 │   ├── stage_e2e.py               主版端到端（相似节点候选 + 矿主结算主序）
 │   ├── final_top3_e2e.csv         5171 节点 Top1~3 + 矿主结算/平台利润
 │   ├── e2e_metrics.json           主版指标
-│   ├── build_final_html.py        HTML 生成脚本
-│   ├── build_distribution_chart.py 推荐分布条形/环状图生成
-│   ├── diag_amplification.py      放大率诊断（推荐占比 vs 真实最优占比）
-│   ├── stage_e2e_ampfix.py        放大惩罚实验（结论：无效，见口径稿第 7 节）
-│   ├── stage_final_unitbw.py      单位带宽双目标+区间+置信度（参照尺子，非主版）
-│   ├── build_correction_list.py   存量纠偏名单（当前业务 vs Top1）
-│   └── sim_capacity_filter.py     受控容量过滤模拟
+│   ├── build_final_html.py        HTML 生成脚本（含“当前在跑”实际对照列）
+│   └── build_distribution_chart.py 推荐分布条形/环状图生成
 ├── 03_variant_ablation/           变体与消融
 │   ├── stage_e2e_v2.py            v2(log1p+neighbor) 对照
 │   ├── stage_cost_improve.py      金额误差三变体拆解
 │   ├── stage_bw_ab.py             带宽辅助分 开/关 对比
 │   ├── final_top3_e2e_v2.csv / e2e_v2_metrics.json
-│   ├── bw_aux_ab_metrics.json / bw_aux_ab_results.csv
+│   ├── bw_aux_ab_metrics.json
 │   └── cost_improve_metrics.json
 ├── 04_report/                     报告与交付文档
 │   ├── README_交付索引.md
 │   ├── 方案定稿报告_矿主优先候选推荐.md
 │   ├── 最终交付说明_矿主优先推荐.md
-│   └── 关键数字口径稿.md
+│   ├── 关键数字口径稿.md
+│   ├── 项目过程说明.md
+│   ├── 各文件作用说明.md
+│   ├── 容量口径限制与正确做法.md
+│   └── 数据体量与属性覆盖说明.md
 ├── 05_shared_data/                主版与诊断共用成品数据
 │   ├── nodes_attr_filled.csv
 │   ├── outcomes_7d_named.csv
@@ -43,8 +42,7 @@ wcx/
 │   └── DATA_README.md             字段口径说明
 ├── 06_html/                       主版全节点推荐总览
 │   ├── 全节点推荐_最终版.html
-│   ├── 推荐业务分布_可视化.html    横向条形（Top10 业务）+ 环状（Top10 占比 87%）
-│   └── 推荐放大率诊断.html         推荐 Top1 占比 vs 真实最优占比（放大率）
+│   └── 推荐业务分布_可视化.html    横向条形（Top10 业务）+ 环状（Top10 占比 87%）
 ├── requirements.txt              运行依赖
 ├── .gitignore                     数据/临时产物默认排除
 └── run_verify_all.py              一键复现校验（重跑 4 步并核对关键数字）
@@ -58,7 +56,7 @@ wcx/
 
 ## 不复用的（弃用/过渡产物，不在交付内）
 
-- HRR 对照与 B站均衡类：`score_prefer_history*`、`score_tight*`、`score_all_candidates*`、
+- 早期/对照候选与重排脚本：`score_prefer_history*`、`score_tight*`、`score_all_candidates*`、
   `run_cost_balance_experiment*`、`v4_*`、`recommendations_before/after*`、`add_current_business*`
 - 旧 HTML/查询服务：`serve_live_lookup.py`、`node_lookup*`、`overview.html`、`node_search*`、`weekly_report*`
 - 中间阶段：`stage2_build_samples*`、`stage3_dual_tower*`（双塔召回在冷启动下未被证明，仅研究过程）
