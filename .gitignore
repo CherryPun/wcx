@@ -1,0 +1,22 @@
+# 忽略运行时与本地临时产物
+__pycache__/
+*.pyc
+.Rhistory
+.DS_Store
+
+# 各模块复现输出（_rerun 可由脚本重新生成）
+*_rerun/
+
+# 大文件数据默认不入库（避免 GitHub 膨胀）。
+# 若在私有仓库且允许内网数据入库，可删除下面两行以实现开箱即跑。
+05_shared_data/*.csv
+
+# 本地环境/凭据相关（如有，务必不入库）
+.env
+*env*
+*.superset_env
+
+# 临时/对照分析产物（不入库）
+02_main_recommendation/_final/
+02_main_recommendation/_ampfix/
+02_main_recommendation/_smoke/

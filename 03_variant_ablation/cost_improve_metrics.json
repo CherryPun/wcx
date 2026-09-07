@@ -1,0 +1,24 @@
+{
+  "n_train": 7803,
+  "n_test": 1926,
+  "baseline_direct": {
+    "mae": 20.96780398166811,
+    "wape": 0.8389587068410088,
+    "r2": 0.43420760066130293
+  },
+  "neighbor_only_no_log1p": {
+    "mae": 22.356402255104836,
+    "wape": 0.8945189654557238,
+    "r2": 0.4354466545396001
+  },
+  "log1p_plus_neighbor": {
+    "mae": 19.137172254175102,
+    "wape": 0.7657119124631899,
+    "r2": 0.3111503421296695
+  },
+  "delta": {
+    "direct_vs_neighbor_only_wape": -0.0556,
+    "neighbor_only_vs_log1p_wape": 0.1288
+  },
+  "note": "三变体同时间外测试：direct / neighbor(不log1p) / neighbor+log1p。拆解误差下降来源。"
+}

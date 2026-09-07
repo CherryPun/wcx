@@ -1,0 +1,22 @@
+{
+  "n_nodes": 1035,
+  "avg_pred_cost_top1": {
+    "on": 31.11,
+    "off": 31.11
+  },
+  "avg_pred_profit_top1": {
+    "on": 9.64,
+    "off": 9.64
+  },
+  "hit_at_1": {
+    "on": 0.3594,
+    "off": 0.3585
+  },
+  "hit_at_3": {
+    "on": 0.6541,
+    "off": 0.6541
+  },
+  "changed_top1_count": 1,
+  "bw_aux_positive_node_count": 17,
+  "note": "带宽辅助分=自身跑该业务近7天利用率；开=排序加入 W_BW*bw_aux*cost_norm，关=不含。"
+}

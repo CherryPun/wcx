@@ -1,0 +1,16 @@
+{
+  "v2_test_nodes": {
+    "n": 1035,
+    "hit1": 0.3121,
+    "hit3": 0.6193,
+    "profit_positive": 1.0
+  },
+  "v1_test_nodes": {
+    "n": 1035,
+    "hit1": 0.3585,
+    "hit3": 0.6541,
+    "profit_positive": 1.0
+  },
+  "avg_pred_cost_top1_v2": 19.12,
+  "note": "v2=log1p+neighbor 成本模型；v1=direct。仅测试节点对比，同一候选与软约束。"
+}
