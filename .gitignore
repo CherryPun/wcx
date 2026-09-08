@@ -6,6 +6,7 @@ __pycache__/
 *.log
 .env
 *.env
+.venv/
 .DS_Store
 
 # Local training outputs and fetched source data

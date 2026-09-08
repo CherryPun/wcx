@@ -333,6 +333,12 @@ class V2RankingUnitTest(unittest.TestCase):
             ranking.canonical_schedule_isps({"isp": "中国联通", "scheduleisps": '["联通"]'}),
             "联通",
         )
+        self.assertEqual(
+            ranking.canonical_schedule_isps({
+                "isp": "移动", "scheduleisps": '["联通", "电信"]',
+            }),
+            "联通",
+        )
 
     def test_invalid_transprov_value_is_not_treated_as_mixed_province(self) -> None:
         self.assertEqual(
@@ -341,7 +347,7 @@ class V2RankingUnitTest(unittest.TestCase):
                 "scheduleisps_text": "移动|电信",
                 "analysis_transprovrate": 50,
             }),
-            "混合网络+未知省份",
+            "本网+未知省份",
         )
         self.assertEqual(
             ranking.infer_network_schedule_type({

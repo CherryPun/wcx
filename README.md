@@ -200,7 +200,7 @@ business_recommendation_profit_report_unit_bw_data.js
 
 含调度字段版已纳入 `scheduleisps`、`analysis_transprovrate`、`join_isbantransprov`、`join_isipv6schedule`，用于区分调度运营商、跨省比例、禁跨省和 IPv6 调度能力：
 
-模型会进一步派生 `network_schedule_type`：`本网本省`、`本网出省`、`异网本省`、`异网出省`。`scheduleISPs` 为空表示本网，并归一为节点自身运营商；`transProvRate` 为空或 0 表示本省、100 表示出省，1 至 99 视为异常值并从训练中剔除。完整 `scheduleISPs` 同时包含本网和异网时仍保留为混合网络。
+模型会进一步派生 `network_schedule_type`：`本网本省`、`本网出省`、`异网本省`、`异网出省`。`scheduleISPs` 为空表示本网，并归一为节点自身运营商；非空时严格按原始顺序只取第一个运营商，其余值不参与训练和容量分池。`transProvRate` 为空或 0 表示本省、100 表示出省，1 至 99 视为异常值并从训练中剔除。
 
 当前默认现网扫描使用：
 
@@ -328,6 +328,7 @@ NIULINK_AUTH='<authorization>' python3 fetch_niulink_virtual_business_bindings.p
 
 ```text
 scheduleISPs 为空 = 调度到节点自身运营商（本网）
+scheduleISPs 非空 = 按原始顺序只取第一个运营商
 transProvRate 为空或 0 = 本省
 transProvRate 100 = 出省
 transProvRate 1~99 = 异常值，整节点日不进训练并写入审计表
@@ -504,4 +505,49 @@ recent_month_large_mainstream_v5_hybrid/v5_model_comparison.csv
 recent_month_large_mainstream_v5_hybrid/v5_node_recommendations.csv
 recent_month_large_mainstream_v5_hybrid/v5_current_not_top1_watchlist.csv
 recent_month_large_mainstream_v5_hybrid/v5_review_switch_candidates.csv
+```
+
+## V6.2 分层业务容量感知与批量约束分配
+
+V6.2 在 V5 节点收益推荐之后增加四层容量约束，防止把大量节点无约束地集中到同一个业务或局部
+原运营商、调度类型、目标运营商、省份组合。
+完整口径、算法、真实结果和限制见
+[`业务容量感知推荐模型V6说明.md`](业务容量感知推荐模型V6说明.md)。
+面向业务同学的简化解释见
+[`业务容量推演说明.md`](业务容量推演说明.md)。
+
+容量流量按 `peak95 -> analyzePeak95 -> buildBandwidth * peak95Ratio / 100` 依次回退；
+七牛虚拟业务同一节点日只取一次有效流量，不累加重复虚拟行。默认以最近 14 个有效日的总流量
+P75 除以 70% 目标利用率，分别得到业务整体、业务+原运营商、业务+原运营商+调度类型+目标运营商、
+业务+省份+原运营商+调度类型+目标运营商的建设带宽上限。细层证据不足时回退到最近的有效父层。
+
+本轮 31 天真实数据包含 505,615 条原始记录、279,442 个干净节点日，流量可用率 99.0%。
+如果将可识别节点全部切到 V5 Top1，会有 4 个业务合计超出约 2,059.15 Gbps。462 个节点进入
+全局优化，四层容量约束后保留 335 个切换复核方案，其中 Top1/Top2/Top3 分别为 307/17/11；
+全部 1,454 个证据充分容量池均未超限。该结果不允许自动切业务。
+
+运行与校验：
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-v5.txt
+
+.venv/bin/python v6_capacity_aware_allocation.py build \
+  --output-dir recent_month_large_mainstream_v6_capacity
+
+.venv/bin/python v6_capacity_aware_allocation.py check \
+  --output-dir recent_month_large_mainstream_v6_capacity
+
+.venv/bin/python -m unittest -v \
+  test_v3_daily_business_training.py \
+  test_v6_capacity_aware_allocation.py
+```
+
+前端报告：
+
+```text
+recent_month_large_mainstream_v6_capacity/v6_capacity_report.html
+recent_month_large_mainstream_v6_capacity/v6_node_report.html
+recent_month_large_mainstream_v6_capacity/v6_capacity_review_nodes.csv
+recent_month_large_mainstream_v6_capacity/v6_capacity_blocked_nodes.csv
 ```

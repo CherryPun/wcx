@@ -251,7 +251,7 @@ def parse_schedule_isps(value: Any) -> list[str]:
 
 
 def canonical_schedule_isps(row: pd.Series | dict[str, Any]) -> str:
-    """Return exact target carriers; an empty schedule means the node's own ISP."""
+    """Return the first target carrier; an empty schedule means the node's own ISP."""
     schedule_value = row.get("scheduleisps_text")
     if not clean_cell(schedule_value):
         schedule_value = row.get("scheduleisps")
@@ -259,7 +259,11 @@ def canonical_schedule_isps(row: pd.Series | dict[str, Any]) -> str:
     if not target_isps:
         local_isp = normalize_carrier(row.get("isp")) or normalize_carrier(row.get("join_isp"))
         target_isps = [local_isp] if local_isp else []
-    return "|".join(sorted(set(target_isps)))
+    return target_isps[0] if target_isps else ""
+
+
+def primary_schedule_isp(row: pd.Series | dict[str, Any]) -> str:
+    return canonical_schedule_isps(row)
 
 
 def effective_transprov_rate(row: pd.Series | dict[str, Any]) -> float | None:
@@ -282,12 +286,10 @@ def infer_schedule_isp_scope(row: pd.Series | dict[str, Any]) -> str:
     local_isp = normalize_carrier(row.get("isp")) or normalize_carrier(row.get("join_isp"))
     if not local_isp:
         return "未知网络"
-    target_isps = parse_schedule_isps(canonical_schedule_isps(row))
-    has_local = local_isp in target_isps
-    has_other = any(target != local_isp for target in target_isps)
-    if has_local and has_other:
-        return "混合网络"
-    return "异网" if has_other else "本网"
+    target_isp = primary_schedule_isp(row)
+    if not target_isp:
+        return "未知网络"
+    return "本网" if target_isp == local_isp else "异网"
 
 
 def infer_schedule_province_scope(row: pd.Series | dict[str, Any]) -> str:

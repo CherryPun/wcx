@@ -22,6 +22,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 import build_mainstream_large_training as mainstream
@@ -42,6 +43,7 @@ DEFAULT_CURRENT_NODES = (
     / "current_online_inservice_non_idc_large_nodes_20260902.csv"
 )
 SUPERSET_RESULT_CAP = 10_000
+MAX_CAPACITY_UTILIZATION = 2.0
 QINIU_BUSINESS_ID = "10000280"
 QINIU_BUSINESS_NAME = "七牛CDN-ZJ月95"
 REWARD_ONLY_RANK_WEIGHTS = (
@@ -242,6 +244,47 @@ def most_common_nonempty(values: pd.Series) -> str:
     return Counter(cleaned).most_common(1)[0][0]
 
 
+def add_capacity_peak_candidates(frame: pd.DataFrame) -> pd.DataFrame:
+    """Add row-level traffic candidates without summing duplicated virtual rows."""
+    output = frame.copy()
+    bandwidth_bps = output["buildBandwidth"] * 1_000_000.0
+    limit = bandwidth_bps * MAX_CAPACITY_UTILIZATION
+
+    direct_valid = output["peak95"].ge(0) & output["peak95"].le(limit)
+    analyze_valid = output["analyzePeak95"].ge(0) & output["analyzePeak95"].le(limit)
+    ratio_valid = (
+        output["peak95Ratio"].ge(0)
+        & output["peak95Ratio"].le(MAX_CAPACITY_UTILIZATION * 100.0)
+        & bandwidth_bps.gt(0)
+    )
+    output["_capacity_peak_direct"] = output["peak95"].where(direct_valid)
+    output["_capacity_peak_analyze"] = output["analyzePeak95"].where(analyze_valid)
+    output["_capacity_peak_ratio"] = (
+        bandwidth_bps * output["peak95Ratio"] / 100.0
+    ).where(ratio_valid)
+    output["_capacity_peak_any"] = np.select(
+        [
+            output["_capacity_peak_direct"].notna(),
+            output["_capacity_peak_analyze"].notna(),
+            output["_capacity_peak_ratio"].notna(),
+        ],
+        [
+            output["_capacity_peak_direct"],
+            output["_capacity_peak_analyze"],
+            output["_capacity_peak_ratio"],
+        ],
+        default=np.nan,
+    )
+    output["_capacity_peak_outlier"] = (
+        output["peak95"].notna() & ~direct_valid
+    ) | (
+        output["analyzePeak95"].notna() & ~analyze_valid
+    ) | (
+        output["peak95Ratio"].notna() & ~ratio_valid
+    )
+    return output
+
+
 def raw_sql(node_ids: list[str], start_day: str, end_day: str) -> str:
     ids = ",\n".join(rebuild.sql_quote(value) for value in node_ids)
     return f"""
@@ -271,6 +314,9 @@ def raw_sql(node_ids: list[str], start_day: str, end_day: str) -> str:
       CAST(t.cost_finalAmount AS DOUBLE) AS cost_finalAmount,
       CAST(t.revenue_finalAmount AS DOUBLE) AS revenue_finalAmount,
       CAST(t.peak95 AS DOUBLE) AS peak95,
+      CAST(t.analyzePeak95 AS DOUBLE) AS analyzePeak95,
+      CAST(t.eveningPeak95 AS DOUBLE) AS eveningPeak95,
+      CAST(t.peak95Ratio AS DOUBLE) AS peak95Ratio,
       CAST(t.transProvRate AS DOUBLE) AS transProvRate,
       CAST(t.scheduleISPs AS VARCHAR) AS scheduleISPs,
       CAST(t.vendorSuggestCustomersName AS VARCHAR) AS vendorSuggestCustomersName,
@@ -356,7 +402,10 @@ def _build_daily_facts_reference(
         if column not in frame.columns:
             frame[column] = ""
         frame[column] = frame[column].map(clean)
-    for column in ["buildBandwidth", "cost_finalAmount", "revenue_finalAmount", "peak95", "transProvRate"]:
+    for column in [
+        "buildBandwidth", "cost_finalAmount", "revenue_finalAmount", "peak95",
+        "analyzePeak95", "eveningPeak95", "peak95Ratio", "transProvRate",
+    ]:
         if column not in frame.columns:
             frame[column] = pd.NA
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
@@ -372,6 +421,7 @@ def _build_daily_facts_reference(
     frame = apply_virtual_business_bindings(
         frame, allow_ids, qiniu_business_ids, virtual_bindings or {}
     )
+    frame = add_capacity_peak_candidates(frame)
 
     facts: list[dict[str, Any]] = []
     audits: list[dict[str, Any]] = []
@@ -447,6 +497,28 @@ def _build_daily_facts_reference(
         revenue = float(attributed["revenue_finalAmount"].fillna(0.0).sum())
         unattributed_cost = float(unattributed["cost_finalAmount"].fillna(0.0).sum())
         unattributed_revenue = float(unattributed["revenue_finalAmount"].fillna(0.0).sum())
+        capacity_direct = attributed["_capacity_peak_direct"].max()
+        capacity_analyze = attributed["_capacity_peak_analyze"].max()
+        capacity_ratio = attributed["_capacity_peak_ratio"].max()
+        if pd.notna(capacity_direct):
+            capacity_peak95_bps = float(capacity_direct)
+            capacity_peak95_source = "peak95"
+            capacity_distinct = attributed["_capacity_peak_direct"].dropna().nunique()
+        elif pd.notna(capacity_analyze):
+            capacity_peak95_bps = float(capacity_analyze)
+            capacity_peak95_source = "analyzePeak95"
+            capacity_distinct = attributed["_capacity_peak_analyze"].dropna().nunique()
+        elif pd.notna(capacity_ratio):
+            capacity_peak95_bps = float(capacity_ratio)
+            capacity_peak95_source = "peak95Ratio_reconstructed"
+            capacity_distinct = attributed["_capacity_peak_ratio"].dropna().nunique()
+        else:
+            capacity_peak95_bps = float("nan")
+            capacity_peak95_source = "missing"
+            capacity_distinct = 0
+        capacity_observations = int(attributed["_capacity_peak_any"].notna().sum())
+        capacity_outliers = int(attributed["_capacity_peak_outlier"].sum())
+        capacity_conflict = bool(capacity_distinct > 1)
         if status == "clean" and not unattributed.empty:
             status = "excluded_unattributed_financial_rows"
             reason = "non-zero financial rows cannot be assigned to the selected daily business"
@@ -479,6 +551,12 @@ def _build_daily_facts_reference(
             "attributed_revenue_finalAmount": revenue,
             "unattributed_cost_finalAmount": unattributed_cost,
             "unattributed_revenue_finalAmount": unattributed_revenue,
+            "capacity_peak95_bps": capacity_peak95_bps,
+            "capacity_peak95_source": capacity_peak95_source,
+            "capacity_peak95_observation_count": capacity_observations,
+            "capacity_peak95_distinct_count": int(capacity_distinct),
+            "capacity_peak95_conflict": capacity_conflict,
+            "capacity_peak95_outlier_rows": capacity_outliers,
         }
         audits.append(audit)
         raw_status.extend([status] * len(group))
@@ -506,6 +584,13 @@ def _build_daily_facts_reference(
             "daily_transprovrate": daily_transprov,
             "source_active_business_ids": "|".join(active_ids),
             "qiniu_bound_business_ids": "|".join(sorted(bound_ids)),
+            "capacity_peak95_bps": capacity_peak95_bps,
+            "capacity_peak95_mbps": capacity_peak95_bps / 1_000_000.0,
+            "capacity_peak95_source": capacity_peak95_source,
+            "capacity_peak95_observation_count": capacity_observations,
+            "capacity_peak95_distinct_count": int(capacity_distinct),
+            "capacity_peak95_conflict": capacity_conflict,
+            "capacity_peak95_outlier_rows": capacity_outliers,
             **daily_profile,
         })
 
@@ -546,7 +631,8 @@ def build_daily_facts(
             frame[column] = ""
         frame[column] = frame[column].fillna("").map(clean)
     numeric_columns = [
-        "buildBandwidth", "cost_finalAmount", "revenue_finalAmount", "peak95", "transProvRate",
+        "buildBandwidth", "cost_finalAmount", "revenue_finalAmount", "peak95",
+        "analyzePeak95", "eveningPeak95", "peak95Ratio", "transProvRate",
     ]
     for column in numeric_columns:
         if column not in frame.columns:
@@ -564,6 +650,7 @@ def build_daily_facts(
     frame = apply_virtual_business_bindings(
         frame, allow_ids, qiniu_business_ids, virtual_bindings or {}
     )
+    frame = add_capacity_peak_candidates(frame)
 
     summary = frame[keys].drop_duplicates().set_index(keys)
     active = frame[frame["is_active"]]
@@ -667,6 +754,60 @@ def build_daily_facts(
         frame[frame["is_unattributed_financial"]], "source_business"
     )
 
+    capacity_rows = frame[frame["is_attributed"]].copy()
+    if not capacity_rows.empty:
+        capacity_summary = capacity_rows.groupby(keys, sort=False).agg(
+            capacity_peak95_direct=("_capacity_peak_direct", "max"),
+            capacity_peak95_analyze=("_capacity_peak_analyze", "max"),
+            capacity_peak95_ratio=("_capacity_peak_ratio", "max"),
+            capacity_peak95_observation_count=("_capacity_peak_any", "count"),
+            capacity_peak95_outlier_rows=("_capacity_peak_outlier", "sum"),
+            capacity_peak95_direct_distinct=("_capacity_peak_direct", "nunique"),
+            capacity_peak95_analyze_distinct=("_capacity_peak_analyze", "nunique"),
+            capacity_peak95_ratio_distinct=("_capacity_peak_ratio", "nunique"),
+        )
+        has_direct = capacity_summary["capacity_peak95_direct"].notna()
+        has_analyze = capacity_summary["capacity_peak95_analyze"].notna()
+        has_ratio = capacity_summary["capacity_peak95_ratio"].notna()
+        capacity_summary["capacity_peak95_bps"] = np.select(
+            [has_direct, has_analyze, has_ratio],
+            [
+                capacity_summary["capacity_peak95_direct"],
+                capacity_summary["capacity_peak95_analyze"],
+                capacity_summary["capacity_peak95_ratio"],
+            ],
+            default=np.nan,
+        )
+        capacity_summary["capacity_peak95_source"] = "missing"
+        capacity_summary.loc[has_ratio, "capacity_peak95_source"] = "peak95Ratio_reconstructed"
+        capacity_summary.loc[has_analyze, "capacity_peak95_source"] = "analyzePeak95"
+        capacity_summary.loc[has_direct, "capacity_peak95_source"] = "peak95"
+        capacity_summary["capacity_peak95_distinct_count"] = 0
+        capacity_summary.loc[has_ratio, "capacity_peak95_distinct_count"] = capacity_summary.loc[
+            has_ratio, "capacity_peak95_ratio_distinct"
+        ]
+        capacity_summary.loc[has_analyze, "capacity_peak95_distinct_count"] = capacity_summary.loc[
+            has_analyze, "capacity_peak95_analyze_distinct"
+        ]
+        capacity_summary.loc[has_direct, "capacity_peak95_distinct_count"] = capacity_summary.loc[
+            has_direct, "capacity_peak95_direct_distinct"
+        ]
+        capacity_summary["capacity_peak95_conflict"] = capacity_summary[
+            "capacity_peak95_distinct_count"
+        ].gt(1)
+        summary = summary.join(capacity_summary[[
+            "capacity_peak95_bps", "capacity_peak95_source",
+            "capacity_peak95_observation_count", "capacity_peak95_outlier_rows",
+            "capacity_peak95_distinct_count", "capacity_peak95_conflict",
+        ]])
+    else:
+        summary["capacity_peak95_bps"] = float("nan")
+        summary["capacity_peak95_source"] = "missing"
+        summary["capacity_peak95_observation_count"] = 0
+        summary["capacity_peak95_outlier_rows"] = 0
+        summary["capacity_peak95_distinct_count"] = 0
+        summary["capacity_peak95_conflict"] = False
+
     selected_active = frame[
         frame["is_active"]
         & frame["is_mainstream"]
@@ -700,8 +841,14 @@ def build_daily_facts(
         "active_mainstream_count", "active_nonmainstream_count", "build_bandwidth_count",
         "unattributed_financial_rows", "attributed_rows", "invalid_transprov_rows",
         "transprov_value_count", "ambiguous_virtual_count",
+        "capacity_peak95_observation_count", "capacity_peak95_outlier_rows",
+        "capacity_peak95_distinct_count",
     ]:
         summary[column] = pd.to_numeric(summary[column], errors="coerce").fillna(0).astype(int)
+    summary["capacity_peak95_source"] = summary["capacity_peak95_source"].fillna("missing")
+    summary["capacity_peak95_conflict"] = (
+        summary["capacity_peak95_conflict"].astype("boolean").fillna(False).astype(bool)
+    )
     summary["status"] = "clean"
     summary["reason"] = ""
 
@@ -786,6 +933,13 @@ def build_daily_facts(
         "source_active_business_ids": clean_summary["active_business_ids"],
         "qiniu_bound_business_ids": clean_summary["qiniu_bound_business_ids"],
         "resolved_virtual_business_ids": clean_summary["resolved_virtual_business_ids"],
+        "capacity_peak95_bps": clean_summary["capacity_peak95_bps"],
+        "capacity_peak95_mbps": clean_summary["capacity_peak95_bps"] / 1_000_000.0,
+        "capacity_peak95_source": clean_summary["capacity_peak95_source"],
+        "capacity_peak95_observation_count": clean_summary["capacity_peak95_observation_count"],
+        "capacity_peak95_distinct_count": clean_summary["capacity_peak95_distinct_count"],
+        "capacity_peak95_conflict": clean_summary["capacity_peak95_conflict"],
+        "capacity_peak95_outlier_rows": clean_summary["capacity_peak95_outlier_rows"],
         **{target: clean_summary[target] for target in DAILY_PROFILE_FIELDS.values()},
     })
     if not facts.empty:

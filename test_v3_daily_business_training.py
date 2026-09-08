@@ -110,6 +110,20 @@ class V3DailyBusinessTrainingTest(unittest.TestCase):
         self.assertEqual(facts.iloc[0]["daily_scheduleisps"], "移动")
         self.assertEqual(facts.iloc[0]["daily_transprovrate"], 0)
 
+    def test_multiple_schedule_isps_keep_only_the_first_carrier(self) -> None:
+        raw = pd.DataFrame([{
+            "nodeId": "n1", "day": "2026-09-01", "customerId": "10000064",
+            "state": "online", "stage": "inService", "buildBandwidth": 500,
+            "isp": "移动", "scheduleISPs": '["联通", "电信"]',
+            "transProvRate": 100,
+            "cost_finalAmount": 10, "revenue_finalAmount": 20,
+        }])
+
+        facts, audit, _ = v3.build_daily_facts(raw, self.allowlist, {})
+
+        self.assertEqual(audit.iloc[0]["status"], "clean")
+        self.assertEqual(facts.iloc[0]["daily_scheduleisps"], "联通")
+
     def test_intermediate_transprov_rate_is_excluded(self) -> None:
         raw = pd.DataFrame([{
             "nodeId": "n1", "day": "2026-09-01", "customerId": "10000064",
@@ -184,6 +198,52 @@ class V3DailyBusinessTrainingTest(unittest.TestCase):
         ])
         run_weights = weighted.groupby("consecutive_business_run")["sample_weight"].sum()
         self.assertTrue((run_weights.round(6) == 1.0).all())
+
+    def test_qiniu_duplicate_ratio_is_reconstructed_once_not_summed(self) -> None:
+        raw = pd.DataFrame([
+            {
+                "nodeId": "n1", "day": "2026-09-01", "customerId": business,
+                "state": "online", "stage": "inService", "buildBandwidth": 500,
+                "cost_finalAmount": 5, "revenue_finalAmount": 10,
+                "peak95Ratio": 70,
+            }
+            for business in ["10000278", "10000280"]
+        ])
+
+        facts, audit, _ = v3.build_daily_facts(raw, self.allowlist, {})
+
+        self.assertEqual(len(facts), 1)
+        self.assertEqual(facts.iloc[0]["capacity_peak95_mbps"], 350)
+        self.assertEqual(facts.iloc[0]["capacity_peak95_source"], "peak95Ratio_reconstructed")
+        self.assertEqual(facts.iloc[0]["capacity_peak95_observation_count"], 2)
+        self.assertFalse(bool(audit.iloc[0]["capacity_peak95_conflict"]))
+
+    def test_direct_peak_has_priority_over_analyze_and_ratio(self) -> None:
+        raw = pd.DataFrame([{
+            "nodeId": "n1", "day": "2026-09-01", "customerId": "10000064",
+            "state": "online", "stage": "inService", "buildBandwidth": 500,
+            "cost_finalAmount": 10, "revenue_finalAmount": 20,
+            "peak95": 320_000_000, "analyzePeak95": 310_000_000, "peak95Ratio": 60,
+        }])
+
+        facts, _, _ = v3.build_daily_facts(raw, self.allowlist, {})
+
+        self.assertEqual(facts.iloc[0]["capacity_peak95_mbps"], 320)
+        self.assertEqual(facts.iloc[0]["capacity_peak95_source"], "peak95")
+
+    def test_outlier_direct_peak_falls_back_to_ratio(self) -> None:
+        raw = pd.DataFrame([{
+            "nodeId": "n1", "day": "2026-09-01", "customerId": "10000064",
+            "state": "online", "stage": "inService", "buildBandwidth": 500,
+            "cost_finalAmount": 10, "revenue_finalAmount": 20,
+            "peak95": 2_000_000_000, "peak95Ratio": 60,
+        }])
+
+        facts, audit, _ = v3.build_daily_facts(raw, self.allowlist, {})
+
+        self.assertEqual(facts.iloc[0]["capacity_peak95_mbps"], 300)
+        self.assertEqual(facts.iloc[0]["capacity_peak95_source"], "peak95Ratio_reconstructed")
+        self.assertEqual(audit.iloc[0]["capacity_peak95_outlier_rows"], 1)
 
 
 if __name__ == "__main__":
