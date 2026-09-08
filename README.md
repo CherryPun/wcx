@@ -13,6 +13,7 @@
 04_report/                报告、交付说明、关键数字口径稿、交付索引、容量口径说明
 05_shared_data/           数据字段说明（DATA_README；成品 CSV 不入库，见 .gitignore）
 06_html/                  主版全节点推荐总览 + 推荐分布可视化（HTML 含 SVG，离线可看）
+07_v2_iteration/          v2 一代快照：迭代方案 + v2_data 自包含工作区
 requirements.txt          运行依赖
 .gitignore                数据/临时产物默认排除
 run_verify_all.py         一键复现校验（重跑 4 步并核对关键数字）
@@ -31,7 +32,7 @@ run_verify_all.py         一键复现校验（重跑 4 步并核对关键数字
 |---|---:|
 | 真实最优业务进 Top1 | 35.9% |
 | 真实最优业务进 Top3 | 65.4% |
-| Top1 平台利润为正 | 100% |
+| Top1 平台利润为正 | 99.7% |
 | 矿主结算预测 WAPE | ≈0.82 |
 
 详细口径见 `04_report/关键数字口径稿.md`。
