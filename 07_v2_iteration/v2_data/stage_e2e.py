@@ -45,6 +45,37 @@ CAT_COLS = ["province", "isp", "resourcetype", "deliverytype", "nattype", "dialt
 NUM_COLS = ["bw", "corenum", "memtotal", "totaldisksize", "hdddisksize", "ssddisksize", "systemdisksize"]
 
 
+def family_of(business: str, name_map: dict) -> str:
+    """七牛虚拟业务按名称诊断归并到家族 token（非生产绑定）。"""
+    nm = name_map.get(str(business), "")
+    if "七牛CDN-虚拟" in nm:
+        return "FQCDNV"
+    if "七牛特招-虚拟" in nm:
+        return "FQTZV"
+    return str(business)
+
+
+def gate_bad_from(o2: pd.DataFrame, thr: float = 0.9) -> set:
+    """门禁：ant 前缀份额 >= thr 的盒子业务不进 nonant 候选（纯函数，入参已按 outcome_days>=7 过滤）。"""
+    o2 = o2.copy()
+    o2["_ant"] = o2["node_id"].astype(str).str.startswith("ant")
+    sh = o2.groupby("business").agg(ant_share=("_ant", "mean")).reset_index()
+    return set(sh.loc[sh["ant_share"] >= thr, "business"].astype(str))
+
+
+def temporal_split(node_first: pd.DataFrame, ratio: float = 0.8, cut_dt=None):
+    """时间外切分：节点按最早上线日排序，前 ratio 训练 / 后测试；cut_dt 非空则按 <cut 划分。"""
+    node_first = node_first.sort_values("intro_dt").reset_index(drop=True)
+    if cut_dt is not None:
+        train_ids = set(node_first[node_first["intro_dt"] < cut_dt]["node_id"].astype(str))
+        test_ids = set(node_first[node_first["intro_dt"] >= cut_dt]["node_id"].astype(str))
+    else:
+        cut = int(len(node_first) * ratio)
+        train_ids = set(node_first.iloc[:cut]["node_id"].astype(str))
+        test_ids = set(node_first.iloc[cut:]["node_id"].astype(str))
+    return train_ids, test_ids
+
+
 def load():
     attrs_path = os.getenv("V2_ATTRS", str(DATA / "nodes_attr_filled.csv"))
     attrs = pd.read_csv(attrs_path, dtype={"node_id": str}, low_memory=False).drop_duplicates("node_id")
@@ -72,15 +103,8 @@ def load():
     if _merge_cfg == "qiniu_name":   # 诊断：按名称合成七牛家族并聚合标签（不当生产绑定）
         _nm = frame.dropna(subset=["business_name"]).drop_duplicates("business")[["business", "business_name"]]
         _nm = {str(b): str(n) for b, n in zip(_nm["business"], _nm["business_name"])}
-        def _fam(b):
-            nm = _nm.get(str(b), "")
-            if "七牛CDN-虚拟" in nm:
-                return "FQCDNV"
-            if "七牛特招-虚拟" in nm:
-                return "FQTZV"
-            return str(b)
         frame = frame.copy()
-        frame["business"] = frame["business"].astype(str).map(_fam)
+        frame["business"] = frame["business"].astype(str).map(lambda b: family_of(b, _nm))
         frame["online_day_dt"] = pd.to_datetime(frame["online_day"], errors="coerce")
         frame = (frame.groupby(["node_id", "business"], as_index=False)
                  .agg(cum_cost_7d=("cum_cost_7d", "sum"),
@@ -137,15 +161,8 @@ def main():
     attrs, frame = load()
     # 时间外切分
     node_first = frame.groupby("node_id")["online_day_dt"].min().reset_index().rename(columns={"online_day_dt": "intro_dt"})
-    node_first = node_first.sort_values("intro_dt").reset_index(drop=True)
-    if V2_CUT:
-        cut_dt = pd.Timestamp(V2_CUT)
-        train_ids = set(node_first[node_first["intro_dt"] < cut_dt]["node_id"].astype(str))
-        test_ids = set(node_first[node_first["intro_dt"] >= cut_dt]["node_id"].astype(str))
-    else:
-        cut = int(len(node_first) * TRAIN_RATIO)
-        train_ids = set(node_first.iloc[:cut]["node_id"].astype(str))
-        test_ids = set(node_first.iloc[cut:]["node_id"].astype(str))
+    train_ids, test_ids = temporal_split(node_first, ratio=TRAIN_RATIO,
+                                         cut_dt=pd.Timestamp(V2_CUT) if V2_CUT else None)
     pos_tr = frame[frame.node_id.isin(train_ids)].copy()
     pos_te = frame[frame.node_id.isin(test_ids)].copy()
     print("训练节点", len(train_ids), "测试节点", len(test_ids))
@@ -241,9 +258,7 @@ def main():
         _o2 = pd.read_csv(DATA / "outcomes_7d_named.csv", dtype={"node_id": str, "business": str}, low_memory=False)
         _o2["business"] = _o2["business"].astype(str).str.replace(r"\.0$", "", regex=True)
         _o2 = _o2[_o2["outcome_days"] >= 7]
-        _o2["_ant"] = _o2.node_id.str.startswith("ant")
-        _sh = _o2.groupby("business").agg(ant_share=("_ant", "mean")).reset_index()
-        gate_bad = set(_sh.loc[_sh["ant_share"] >= 0.9, "business"].astype(str))
+        gate_bad = gate_bad_from(_o2, 0.9)   # ant_share 份额取自 5% 混合账（近似，见 runbook）
         pd.DataFrame({"business": sorted(gate_bad)}).to_csv(OUT_DIR / "gate_bad.csv", index=False, encoding="utf-8-sig")
         print("gate_bad 业务数", len(gate_bad))
 

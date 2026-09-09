@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install -r requirements.txt
+      - name: Syntax compile
+        run: |
+          python -m py_compile run_verify_all.py 07_v2_iteration/v2_data/stage_e2e.py \
+            07_v2_iteration/v2_data/run_verify_v2.py 07_v2_iteration/v2_data/run_smoke_v2.py \
+            07_v2_iteration/v2_data/check_data_ready.py 07_v2_iteration/v2_data/make_smoke.py
+      - name: Pure-function tests (no data)
+        run: python 07_v2_iteration/v2_data/tests/test_pure_funcs.py
+      - name: V2 artifact verify (no data)
+        run: python 07_v2_iteration/v2_data/run_verify_v2.py
+      - name: Smoke pipeline (committed subset)
+        run: python 07_v2_iteration/v2_data/run_smoke_v2.py
+      - name: Data-required full rerun (manual)
+        run: echo "全库重跑(需内网数据/超时): python 07_v2_iteration/v2_data/stage_e2e.py 经 EXEC_expansion_runbook.md"
