@@ -96,8 +96,11 @@ def pie_of(series, n_title, pal, total_note):
     return bar_svg, pie_svg, leg_html
 
 
+QN = {b for b, nm in mp.items() if "七牛" in str(nm)}   # 七牛系（ID/归并口径与现网不一致，需标注）
+
+
 def diff_table(rec: pd.Series, cur: pd.Series, topn: int = 20) -> str:
-    """推荐 Top1 vs 当前在跑 差异明细表（无提示列）。返回 <table> HTML。"""
+    """推荐动员规模 vs 现状在跑基数 差异表（Top20，仅供对照，非模型对错检验）。"""
     rc = rec.value_counts()
     cc = cur.value_counts()
     keys = sorted(set(rc.index) | set(cc.index),
@@ -106,10 +109,11 @@ def diff_table(rec: pd.Series, cur: pd.Series, topn: int = 20) -> str:
     for b in keys:
         rn = int(rc.get(b, 0)); cn = int(cc.get(b, 0)); delta = rn - cn
         cls = " up" if delta > 0 else (" dn" if delta < 0 else "")
-        rows.append(f"<tr><td>{label(b)}</td><td class='n'>{rn}</td><td class='n'>{cn}</td>"
+        mark = " <span class='m'>·七牛ID口径不同</span>" if str(b) in QN else ""
+        rows.append(f"<tr><td>{label(b)}{mark}</td><td class='n'>{rn}</td><td class='n'>{cn}</td>"
                     f"<td class='n{cls}'>{delta:+d}</td></tr>")
-    return (f"<table><thead><tr><th>业务</th><th class='n'>推荐 Top1</th><th class='n'>当前在跑</th>"
-            f"<th class='n'>差值(推荐−当前)</th></tr></thead><tbody>{''.join(rows)}</tbody></table>")
+    return (f"<table><thead><tr><th>业务</th><th class='n'>推荐 Top1（动员规模）</th><th class='n'>现状在跑（近7天有效）</th>"
+            f"<th class='n'>差值(推荐−现状)</th></tr></thead><tbody>{''.join(rows)}</tbody></table>")
 
 
 def build_html(fn, out_name, title, note, cur_series):
@@ -123,7 +127,10 @@ def build_html(fn, out_name, title, note, cur_series):
         cbar, cpie, cleg = pie_of(cur_series, "当前在跑业务（近7天有效结算）—— 前十", pal, "")
         block += (f"""<div class='card'>{cbar}</div>
 <div class='card two'><div><h3>Top10 占全部当前在跑</h3>{cpie}</div><div><h3>图例</h3>{cleg}</div></div>""")
-        block += ("<div class='card'><h3>推荐 Top1 vs 当前在跑（差异明细，Top20；差值=推荐−当前，正=模型比现实推得多）</h3>"
+        block += ("<div class='card'><h3>推荐动员规模 vs 现状在跑基数（Top20，仅供对照）</h3>"
+                  "<p class='m'>读法注：差值 = 推荐Top1节点数 − 现状在跑节点数。此为\"模型动员规模 vs 现实在跑基数\"的对照，<b>不是模型对错检验</b>；"
+                  "两列样本/时点/ID 口径不同：现状=近7天有效结算（空载/低量不计）、推荐=全量被推荐节点(含空载)；"
+                  "0 的含义＝该业务当下无有效在跑节点（可能因客户停量、节点空载、或客户 ID 粒度差异，七牛系已标\"ID口径不同\"，勿当推荐错误）。</p>"
                   + diff_table(t1, cur_series) + "</div>")
     html = ("<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'><title>" + title + "</title><style>"
             "body{font-family:Microsoft YaHei,sans-serif;margin:16px;background:#f6f7f9}.card{background:#fff;border-radius:10px;padding:16px 20px;margin:12px 0}"
