@@ -1,0 +1,41 @@
+{
+  "version": "2026-09-09 全库 nonant clean 定稿（交付基线）",
+  "deliverable_numbers": {
+    "family_hit1": 0.21, "family_hit3": 0.517, "amount_wape": 0.4085,
+    "amount_r2": 0.6818, "top1_profit_positive": 0.9294,
+    "test_nodes": 2994, "train_nodes": 11972, "nodes_with_rec": 14966,
+    "candidate_pool": 61, "empty_candidate": 3,
+    "top1_amplification_10000244": 3.5
+  },
+  "inputs": [
+    {
+      "role": "outcomes",
+      "local_file": "_rerun/exp_outcomes_clean.csv",
+      "source": "Superset yzh-starrocks test.node_day_ops_wide_full，全库 nonant 满 7 天账",
+      "row_expected_min": 49000,
+      "window": "fd 首次出现日 ~<=2026-08-30；7 天窗口累计到宽表最新 2026-09-06",
+      "required_cols": ["node_id", "business", "business_name", "online_day", "outcome_days", "cum_cost_7d", "cum_revenue_7d"]
+    },
+    {
+      "role": "attrs",
+      "local_file": "_rerun/exp_attrs.csv",
+      "source": "宽表行属性构造（province/isp/deliverytype/resourcetype/bw）；jarvis 类字段以缺失处理",
+      "row_expected_min": 14900,
+      "window": "控制面 ~2026-09-07",
+      "required_cols": ["node_id", "deliverytype", "resourcetype", "province", "isp", "bw", "nattype", "dialtype", "device_type", "os", "corenum", "memtotal", "totaldisksize", "hdddisksize", "ssddisksize", "systemdisksize"],
+      "note": "数值带宽列名必须为 bw（buildBandwidth 需改名），否则不进相似矩阵"
+    }
+  ],
+  "frozen_env": {
+    "V2_POOL": "nonant",
+    "V2_MERGE": "qiniu_name",
+    "V2_GATE": "1（默认开；ant_share 份额取自 5% 混合账，见 runbook）",
+    "MIN_SUPPORT": 20,
+    "KNN_K": 15,
+    "no_exception": "无 10000074 例外（support 达标自动进池）"
+  },
+  "verify": {
+    "script": "run_verify_v2.py",
+    "note": "对已入库 outputs/exp_metrics.json 与 outputs/large_review_fullpool.csv 做阈值断言，无数据也可运行"
+  }
+}
