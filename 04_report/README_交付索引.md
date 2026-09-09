@@ -49,7 +49,7 @@ wcx/
 └── run_verify_all.py              一键复现校验（重跑 4 步并核对关键数字）
 ```
 
-## 已做但无效的改进（诚实记录）
+## 已做但无效的改进
 
 - **放大惩罚（stage_e2e_ampfix.py）**：按训练期“推荐占比/真实最优占比”对高放大业务扣分，
   测试命中 Top1 35.9%→32.4%、Top3 65.4%→47.0%，集中度几乎未降（Top1 占比 67%→66%）。
@@ -62,7 +62,7 @@ wcx/
 - 旧 HTML/查询服务：`serve_live_lookup.py`、`node_lookup*`、`overview.html`、`node_search*`、`weekly_report*`
 - 中间阶段：`stage2_build_samples*`、`stage3_dual_tower*`（双塔召回在冷启动下未被证明，仅研究过程）
 
-## 运行说明（已兑现）
+## 运行说明
 
 - 主版与 01 诊断脚本已改成在交付目录直接运行：数据读 `05_shared_data`，结果写各模块 `_rerun/`，不覆盖正式产物。
 - 已实测可复现：`stage_e2e.py`（02）、`stage_p0_temporal.py` / `stage_diag_coldstart.py`（01）输出与正式数字一致。
