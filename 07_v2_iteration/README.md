@@ -32,9 +32,15 @@
 │  ├─ exp_metrics.json
 │  └─ B_large_amplification.txt
 └─ v2_data/                 一代工作区（脚本+数据重建）
+   ├─ run_verify_v2.py        交付产物阈值验收（无数据可跑；--refull 需数据）
+   ├─ run_smoke_v2.py         冒烟流水线（入库 smoke/ 子集，结构断言）
+   ├─ check_data_ready.py     数据就绪自检（schema/规模 vs data_manifest.json）
+   ├─ data_manifest.json      复现输入清单（源/窗口/行数/必需列）
    ├─ stage_e2e.py           模型流水线（env 参数化，见 README）
    ├─ README.md              运行环境/默认配置
    ├─ EXEC_expansion_runbook.md  全库数据重建与四项复核执行单
+   ├─ smoke/                  冒烟小样本（350 节点，入库）
+   ├─ tests/                  纯函数单测（无数据依赖）
    ├─ analyze_attr_coverage.py / build_fullpool.py / eval_layer.py 等（诊断/交付脚本）
    └─ _rerun/                运行产物（不入库）
 ```
