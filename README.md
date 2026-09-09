@@ -13,7 +13,7 @@
 04_report/                报告、交付说明、关键数字口径稿、交付索引、容量口径说明
 05_shared_data/           数据字段说明（DATA_README；成品 CSV 不入库，见 .gitignore）
 06_html/                  主版全节点推荐总览 + 推荐分布可视化（HTML 含 SVG，离线可看）
-07_v2_iteration/          v2 一代快照：迭代方案 + v2_data 自包含工作区
+07_v2_iteration/          V2 交付（README.md 入口；outputs 终版页；v2_data 一代工作区）
 requirements.txt          运行依赖
 .gitignore                数据/临时产物默认排除
 run_verify_all.py         一键复现校验（重跑 4 步并核对关键数字）
@@ -21,12 +21,18 @@ run_verify_all.py         一键复现校验（重跑 4 步并核对关键数字
 
 ### 严谨性说明
 
-- 仓库内所有 CSV/JSON/HTML 均由本仓库脚本读取 `05_shared_data` 生成，可用 `run_verify_all.py` 复现。
+- 主版（01–06）CSV/JSON/HTML 由仓库脚本读取 `05_shared_data` 生成，可用 `run_verify_all.py` 复现；07 V2 全库数据不随仓库分发，复现走 `07_v2_iteration/v2_data/EXEC_expansion_runbook.md`。
 - `01`/`02`/`03` 中的 JSON 即各步骤的可复现指标快照；`_rerun/`（运行产物）不入库。
 - 无效或实验性方案（放大惩罚、单位带宽参照、受控容量模拟等）的**结论**
   保留在 `04_report`；相应脚本与中间产物已移出仓库并归档，避免混入无出处的数据。
 
-## 主结果（测试 = 时间外较晚上线的新节点）
+## 当前交付（V2 large，全库 nonant，clean 定稿）
+
+家族粒 hit1 21.0 / hit3 51.7，金额 WAPE 0.41 / R2 0.68（时间外 n=2,994）——见 `07_v2_iteration/README.md`。
+
+## v1 历史口径（5% 混训 92% ant，不作当前交付）
+
+> 下表为 v1（5% 抽样、混合 ant/盒子 92%）指标，仅供历史对照，**不作当前交付**（当前见上）。
 
 | 指标 | 数值 |
 |---|---:|

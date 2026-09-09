@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -24,26 +25,31 @@ from sklearn.preprocessing import OneHotEncoder, QuantileTransformer, normalize
 from xgboost import XGBRegressor
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parents[2]            # 仓库根 wcx（本文件位于 07_v2_iteration/v2_data/）
+ROOT = HERE.parents[1]            # 仓库根 wcx（本文件位于 07_v2_iteration/v2_data/）
 DATA = ROOT / "05_shared_data"    # 共享数据统一入口
 OUT_DIR = HERE / "_rerun"         # 本代产物
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 RANDOM_STATE = 42
-MIN_SUPPORT = 20      # 候选业务需至少出现在训练节点 MIN_SUPPORT 个
-KNN_K = 15
+MIN_SUPPORT = int(os.getenv("V2_MIN_SUPPORT", 20))   # 候选业务需至少出现在训练节点 MIN_SUPPORT 个
+KNN_K = int(os.getenv("V2_KNN_K", 15))
 TRAIN_RATIO = 0.8
-W_PROFIT = 0.8        # 平台利润<=0 软降权系数
+V2_CUT = os.getenv("V2_CUT", "")      # 非空则按 online_day < V2_CUT 分训练/测试（滚动窗口）
+W_PROFIT = float(os.getenv("V2_W_PROFIT", 0.8))   # 平台利润<=0 软降权系数
 W_CAP = 0.3           # 容量超限软降权系数
 W_BW = 0.10           # 带宽辅助分权重
+SKIP_OUT = os.getenv("V2_SKIP_OUT", "0") == "1"   # 跳过最终 csv/html 写入（扫描用）
+V2_ORIG = os.getenv("V2_ORIG", "0") == "1"          # 诊断用：恢复原主版排序（te早停/含cap/无bw）
 
 CAT_COLS = ["province", "isp", "resourcetype", "deliverytype", "nattype", "dialtype", "device_type", "os"]
 NUM_COLS = ["bw", "corenum", "memtotal", "totaldisksize", "hdddisksize", "ssddisksize", "systemdisksize"]
 
 
 def load():
-    attrs = pd.read_csv(DATA / "nodes_attr_filled.csv", dtype={"node_id": str}, low_memory=False).drop_duplicates("node_id")
-    outcomes = pd.read_csv(DATA / "outcomes_7d_named.csv", dtype={"node_id": str, "business": str}, low_memory=False)
+    attrs_path = os.getenv("V2_ATTRS", str(DATA / "nodes_attr_filled.csv"))
+    attrs = pd.read_csv(attrs_path, dtype={"node_id": str}, low_memory=False).drop_duplicates("node_id")
+    out_path = os.getenv("V2_OUTCOMES", str(DATA / "outcomes_7d_named.csv"))
+    outcomes = pd.read_csv(out_path, dtype={"node_id": str, "business": str}, low_memory=False)
     outcomes["business"] = outcomes["business"].str.replace(r"\.0$", "", regex=True)
     for c in ["cum_cost_7d", "cum_revenue_7d"]:
         outcomes[c] = pd.to_numeric(outcomes[c], errors="coerce")
@@ -51,6 +57,40 @@ def load():
     outcomes = outcomes[outcomes["outcome_days"] >= 7].copy()
     outcomes["online_day_dt"] = pd.to_datetime(outcomes["online_day"], errors="coerce")
     frame = outcomes.merge(attrs, on="node_id", how="inner", validate="many_to_one")
+    pool = os.getenv("V2_POOL", "")
+    if pool in ("ant", "nonant"):
+        is_ant = attrs["node_id"].astype(str).str.startswith("ant")
+        keep = is_ant if pool == "ant" else ~is_ant
+        attrs = attrs[keep].copy()
+        frame = frame[frame.node_id.isin(set(attrs["node_id"]))].copy()
+    elif os.getenv("V2_NONANT", "0") == "1":   # 向后兼容别名
+        attrs = attrs[~attrs["node_id"].astype(str).str.startswith("ant")].copy()
+        frame = frame[~frame["node_id"].astype(str).str.startswith("ant")].copy()
+    _merge_cfg = os.getenv("V2_MERGE", "")
+    if _merge_cfg == "" and os.getenv("V2_POOL", "") == "nonant":
+        _merge_cfg = "qiniu_name"   # large 默认开（诊断映射）；显式设 V2_MERGE=0 可关
+    if _merge_cfg == "qiniu_name":   # 诊断：按名称合成七牛家族并聚合标签（不当生产绑定）
+        _nm = frame.dropna(subset=["business_name"]).drop_duplicates("business")[["business", "business_name"]]
+        _nm = {str(b): str(n) for b, n in zip(_nm["business"], _nm["business_name"])}
+        def _fam(b):
+            nm = _nm.get(str(b), "")
+            if "七牛CDN-虚拟" in nm:
+                return "FQCDNV"
+            if "七牛特招-虚拟" in nm:
+                return "FQTZV"
+            return str(b)
+        frame = frame.copy()
+        frame["business"] = frame["business"].astype(str).map(_fam)
+        frame["online_day_dt"] = pd.to_datetime(frame["online_day"], errors="coerce")
+        frame = (frame.groupby(["node_id", "business"], as_index=False)
+                 .agg(cum_cost_7d=("cum_cost_7d", "sum"),
+                      cum_revenue_7d=("cum_revenue_7d", "sum"),
+                      outcome_days=("outcome_days", "max"),
+                      online_day=("online_day", "min"),
+                      business_name=("business_name", "first")))
+        frame["cum_profit_7d"] = frame["cum_revenue_7d"] - frame["cum_cost_7d"]
+        frame["online_day_dt"] = pd.to_datetime(frame["online_day"], errors="coerce")
+        print("V2_MERGE=qiniu_name 已合成家族并聚合（仅诊断）")
     return attrs, frame
 
 
@@ -98,15 +138,25 @@ def main():
     # 时间外切分
     node_first = frame.groupby("node_id")["online_day_dt"].min().reset_index().rename(columns={"online_day_dt": "intro_dt"})
     node_first = node_first.sort_values("intro_dt").reset_index(drop=True)
-    cut = int(len(node_first) * TRAIN_RATIO)
-    train_ids = set(node_first.iloc[:cut]["node_id"].astype(str))
-    test_ids = set(node_first.iloc[cut:]["node_id"].astype(str))
+    if V2_CUT:
+        cut_dt = pd.Timestamp(V2_CUT)
+        train_ids = set(node_first[node_first["intro_dt"] < cut_dt]["node_id"].astype(str))
+        test_ids = set(node_first[node_first["intro_dt"] >= cut_dt]["node_id"].astype(str))
+    else:
+        cut = int(len(node_first) * TRAIN_RATIO)
+        train_ids = set(node_first.iloc[:cut]["node_id"].astype(str))
+        test_ids = set(node_first.iloc[cut:]["node_id"].astype(str))
     pos_tr = frame[frame.node_id.isin(train_ids)].copy()
     pos_te = frame[frame.node_id.isin(test_ids)].copy()
     print("训练节点", len(train_ids), "测试节点", len(test_ids))
 
     stats = build_stats(pos_tr)
-    pool = stats[stats["support"] >= MIN_SUPPORT]["business"].astype(str).tolist()
+    _ms_default = MIN_SUPPORT
+    _ms_ex = {}
+    if os.getenv("V2_POOL", "") == "nonant":
+        _ms_ex = {"10000074": 10}   # 局部例外：仅腾讯直播，不开全局
+    _req = stats["business"].astype(str).map(lambda b: _ms_ex.get(b, _ms_default))
+    pool = stats[_req <= stats["support"]]["business"].astype(str).tolist()
     pool_set = set(pool)
     print("候选业务池", len(pool_set))
 
@@ -128,14 +178,23 @@ def main():
         tr_feat[c] = pd.Categorical(tr_feat[c], categories=cats)
         te_feat[c] = pd.Categorical(te_feat[c], categories=cats)
 
+    # 早停验证集：训练内随机 valid（不再用测试集，避免时间外偏乐观）
+    _n = min(len(tr_feat), len(tr_x))
+    _idx = np.arange(_n)
+    _rng = np.random.RandomState(RANDOM_STATE)
+    _rng.shuffle(_idx)
+    _nv = int(len(_idx) * 0.15)
+    _vi, _ti = _idx[:_nv], _idx[_nv:]
     models = {}
     for short, ycol in {"cost": "cum_cost_7d", "revenue": "cum_revenue_7d", "profit": "cum_profit_7d"}.items():
         mdl = XGBRegressor(n_estimators=500, learning_rate=0.05, max_depth=6, min_child_weight=5,
                            subsample=0.85, colsample_bytree=0.85, reg_lambda=8, tree_method="hist",
                            enable_categorical=True, objective="reg:squarederror", random_state=RANDOM_STATE,
                            n_jobs=-1, early_stopping_rounds=30)
-        mdl.fit(tr_feat[feats], tr_x[ycol].astype(float),
-                eval_set=[(te_feat[feats], te_x[ycol].astype(float))], verbose=False)
+        _ev = ((te_feat[feats], te_x[ycol].astype(float)) if V2_ORIG
+               else (tr_feat.iloc[_vi][feats], tr_x.iloc[_vi][ycol].astype(float)))
+        mdl.fit(tr_feat.iloc[_ti][feats], tr_x.iloc[_ti][ycol].astype(float),
+                eval_set=[_ev], verbose=False)
         models[short] = mdl
 
     # 金额评估（测试节点自身账 WAPE/R²）
@@ -175,7 +234,22 @@ def main():
     # 对所有有账节点输出推荐
     all_nodes = sorted(frame.node_id.unique())
     rows_all = []
+    prof = []
+    cand_rows = []
     hist_map = frame.groupby("node_id")["business"].apply(lambda s: set(s.astype(str))).to_dict()
+
+    # A 门禁：几乎只在 ant 高频的盒子业务 ID 不进 nonant 候选
+    gate_bad = set()
+    gate_on = os.getenv("V2_GATE", "1" if os.getenv("V2_POOL", "") == "nonant" else "0") == "1"
+    if gate_on and os.getenv("V2_POOL", "") == "nonant":
+        _o2 = pd.read_csv(DATA / "outcomes_7d_named.csv", dtype={"node_id": str, "business": str}, low_memory=False)
+        _o2["business"] = _o2["business"].astype(str).str.replace(r"\.0$", "", regex=True)
+        _o2 = _o2[_o2["outcome_days"] >= 7]
+        _o2["_ant"] = _o2.node_id.str.startswith("ant")
+        _sh = _o2.groupby("business").agg(ant_share=("_ant", "mean")).reset_index()
+        gate_bad = set(_sh.loc[_sh["ant_share"] >= 0.9, "business"].astype(str))
+        pd.DataFrame({"business": sorted(gate_bad)}).to_csv(OUT_DIR / "gate_bad.csv", index=False, encoding="utf-8-sig")
+        print("gate_bad 业务数", len(gate_bad))
 
     for qi, nid in enumerate(all_nodes):
         if nid not in id_pos:
@@ -188,8 +262,14 @@ def main():
         neigh_rows = train_pos_ledger[train_pos_ledger.node_id.isin(neigh_ids.tolist())]
         cand = set(neigh_rows["business"].astype(str)) | (hist_map.get(nid, set()) & pool_set)
         cand = sorted(c for c in cand if c in pool_set)
+        if gate_bad:
+            cand = [c for c in cand if c not in gate_bad]
+        fb = int(len(cand) == 0)
         if not cand:
-            cand = pool[:3]
+            cand = ([b for b in pool if b not in gate_bad][:3] if gate_bad else pool[:3])
+        n_nbiz = int(neigh_rows["business"].nunique()) if len(neigh_rows) else 0
+        prof.append({"node_id": str(nid), "is_test": str(nid) in test_ids,
+                     "n_cand": len(cand), "fallback": fb, "n_neigh_biz": n_nbiz})
         pairs = pd.DataFrame([(nid, b) for b in cand], columns=["node_id", "business"])
         f = feature_df(pairs, attrs, stats, cats_feat)
         for c in cats_feat:
@@ -204,14 +284,20 @@ def main():
         mn, mx = f["pred_cost"].min(), f["pred_cost"].max()
         f["cost_norm"] = (f["pred_cost"] - mn) / (mx - mn) if mx - mn > 1e-9 else 0.5
         f["profit_pen"] = np.where(f["pred_profit"] <= 0, -W_PROFIT * f["cost_norm"], 0.0)
-        f["cap_pen"] = -W_CAP * f["business"].map(cap_penalty)
-        f["bw_util"] = [bw_map.get((str(nid), str(b)), np.nan) for b in f["business"]]
-        f["bw_aux"] = f["bw_util"].fillna(0.0) / 1.0  # Mbps, aux as scaled by typical band later
-        # 主版本：矿主成本优先排序
-        f["score_on"] = f["pred_cost"] + f["profit_pen"] + f["cap_pen"]
-        f_on = f.sort_values("score_on", ascending=False).head(3)
-        # 关闭辅助分 = 不计带宽；主版本已经不含 bw（辅助分开/关在此处对比是否应含）
-        f["score_off"] = f["pred_cost"] + f["profit_pen"] + f["cap_pen"]
+        if V2_ORIG:  # 诊断格：恢复原主版逻辑（含失真容量降权、无带宽辅助、on=off）
+            f["cap_pen"] = -W_CAP * f["business"].map(cap_penalty)
+            f["score_on"] = f["pred_cost"] + f["profit_pen"] + f["cap_pen"]
+            f_on = f.sort_values("score_on", ascending=False).head(3)
+            f["score_off"] = f["score_on"]
+        else:       # P1 修复版：去失真容量、带宽辅助真正进 score_on
+            f["bw_util"] = [bw_map.get((str(nid), str(b)), np.nan) for b in f["business"]]
+            _arr = pd.to_numeric(f["bw_util"], errors="coerce").to_numpy(dtype=float)
+            _arr = _arr[~np.isnan(_arr)]
+            bw_mx = float(_arr.max()) if _arr.size else 0.0
+            f["bw_norm"] = pd.to_numeric(f["bw_util"], errors="coerce").fillna(0.0) / (bw_mx if bw_mx > 0 else 1.0)
+            f["score_on"] = f["pred_cost"] + f["profit_pen"] + W_BW * f["bw_norm"] * f["cost_norm"]
+            f_on = f.sort_values("score_on", ascending=False).head(3)
+            f["score_off"] = f["pred_cost"] + f["profit_pen"]
         f_off = f.sort_values("score_off", ascending=False).head(3)
         rec = {"node_id": str(nid)}
         for i, (_, r) in enumerate(f_on.iterrows(), start=1):
@@ -221,6 +307,20 @@ def main():
             rec[f"top{i}_pred_profit"] = round(float(r["pred_profit"]), 2)
             rec[f"top{i}_profit_positive"] = int(float(r["pred_profit"]) > 0)
         rows_all.append(rec)
+        cand_rows.append({"node_id": str(nid), "cand": "|".join(cand),
+                          "top1": str(rec.get("top1_business", "")), "top2": str(rec.get("top2_business", "")), "top3": str(rec.get("top3_business", ""))})
+
+    if os.getenv("V2_POOL", "") in ("ant", "nonant"):
+        _pf = pd.DataFrame(prof)
+        _pf.to_csv(OUT_DIR / ("profile_" + os.getenv("V2_POOL") + ".csv"), index=False, encoding="utf-8-sig")
+        _cr = pd.DataFrame(cand_rows)
+        _cr = _cr[_cr.node_id.isin(set(test_ids))]
+        _cr.to_csv(OUT_DIR / ("cand_test_" + os.getenv("V2_POOL") + ".csv"), index=False, encoding="utf-8-sig")
+        _t = _pf[_pf.is_test]
+        print("候选画像[测试节点] n=", len(_t),
+              " 候选数中位=", round(float(_t.n_cand.median()), 1),
+              " 空候选兜底率=", round(float(_t.fallback.mean()), 4),
+              " 邻居唯一业务均值=", round(float(_t.n_neigh_biz.mean()), 2))
 
     final = pd.DataFrame(rows_all)
     final.to_csv(OUT_DIR / "final_top3_e2e.csv", index=False, encoding="utf-8-sig")
@@ -255,6 +355,8 @@ def main():
         "note": "端到端：相似节点真实业务候选+矿主结算主序+利润/容量软降权+带宽辅助(自身账利用率)。候选参考定位。",
     }
     (OUT_DIR / "e2e_metrics.json").write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
+    if SKIP_OUT:  # 扫描模式：跳过 HTML 大文件生成
+        return
     print(json.dumps(metrics, ensure_ascii=False, indent=2))
     print("wrote", OUT_DIR / "final_top3_e2e.csv")
 

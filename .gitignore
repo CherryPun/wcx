@@ -1,4 +1,4 @@
-# 忽略运行时与本地临时产物
+﻿# 忽略运行时与本地临时产物
 __pycache__/
 *.pyc
 .Rhistory
@@ -20,3 +20,7 @@ __pycache__/
 02_main_recommendation/_final/
 02_main_recommendation/_ampfix/
 02_main_recommendation/_smoke/
+
+# V2 迭代运行日志
+07_v2_iteration/**/*.log
+

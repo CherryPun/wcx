@@ -43,7 +43,7 @@ wcx/
 ├── 06_html/                       主版全节点推荐总览
 │   ├── 全节点推荐_最终版.html
 │   └── 推荐业务分布_可视化.html    横向条形（Top10 业务）+ 饼图（Top10 占比 87%）
-├── 07_v2_iteration/               v2 一代快照：README_V2迭代方案.md + v2_data（自包含）
+├── 07_v2_iteration/               V2 交付：README.md（入口/结果）+ outputs（终版页/复核）+ v2_data
 ├── requirements.txt              运行依赖
 ├── .gitignore                     数据/临时产物默认排除
 └── run_verify_all.py              一键复现校验（重跑 4 步并核对关键数字）
