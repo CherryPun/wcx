@@ -27,4 +27,6 @@ jobs:
       - name: Smoke pipeline (committed subset)
         run: python 07_v2_iteration/v2_data/run_smoke_v2.py
       - name: Data-required full rerun (manual)
-        run: echo "全库重跑(需内网数据/超时): python 07_v2_iteration/v2_data/stage_e2e.py 经 EXEC_expansion_runbook.md"
+        run: |
+          echo "全库重跑需内网数据且耗时长，见 v2_data/EXEC_expansion_runbook.md"
+          echo "python 07_v2_iteration/v2_data/stage_e2e.py"
