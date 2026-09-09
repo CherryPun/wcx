@@ -44,7 +44,7 @@ FROM win WHERE ndays >= 7;
 
 ## 2) 画像
 
-- 这批 node_id 的 jarvis 快照（as-of 能做就做；做不到用现回填逻辑），记录关键字段覆盖率后再跑；画像缺失节点数要报。
+- 这批 node_id 的画像按**宽表行属性构造**（列名须与 stage_e2e.py 的 CAT_COLS/NUM_COLS 一致，数值带宽列必须叫 `bw`，buildBandwidth 需改名；jarvis 类 core/mem/disk/device/nat/dial 以缺失处理），**不再走 v1 的 jarvis + node_join/HRR 回填**；记录关键字段覆盖率后再跑，画像缺失节点数要报。
 
 ## 3) 环境（零改动）
 
@@ -54,6 +54,7 @@ $env:V2_ATTRS="<全库非ant画像.csv>"; $env:V2_OUTCOMES="<全库非ant满7账
 python stage_e2e.py
 ```
 - 不调 K / MIN_SUPPORT / 早停 / 门禁；无 74 例外。
+- 门禁（盒子业务不进 large）的 ant_share 份额**取自 5% 混合账** `05_shared_data/outcomes_7d_named.csv`（近似口径，非全库；stage_e2e.py 固定读该文件，不读 V2_OUTCOMES）；若全库盒子占比与 5% 明显偏离需复核门禁名单。
 
 ## 4) 四项复核表（同一 82 的尺子换成全库时间外）
 

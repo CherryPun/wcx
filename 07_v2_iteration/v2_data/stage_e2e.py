@@ -151,12 +151,8 @@ def main():
     print("训练节点", len(train_ids), "测试节点", len(test_ids))
 
     stats = build_stats(pos_tr)
-    _ms_default = MIN_SUPPORT
-    _ms_ex = {}
-    if os.getenv("V2_POOL", "") == "nonant":
-        _ms_ex = {"10000074": 10}   # 局部例外：仅腾讯直播，不开全局
-    _req = stats["business"].astype(str).map(lambda b: _ms_ex.get(b, _ms_default))
-    pool = stats[_req <= stats["support"]]["business"].astype(str).tolist()
+    # 无业务例外：门槛统一 MIN_SUPPORT（含 10000074，全库 support 达标即自动进池）
+    pool = stats[stats["support"] >= MIN_SUPPORT]["business"].astype(str).tolist()
     pool_set = set(pool)
     print("候选业务池", len(pool_set))
 
