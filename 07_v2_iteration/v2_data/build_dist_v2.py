@@ -77,7 +77,7 @@ def build_html(fn, out_name, title, note):
 
 build_html("final_ant.csv", "推荐分布_小节点_ant.html",
            "V2 推荐分布_小节点（ant/盒子）",
-           "口径：ant 池（5%）Top1 推荐分布；ant 为弱产品单独页。")
+           "口径：Top1 推荐分布，样本 = ant 池被推荐节点（final_ant，n=4,762，5% 数据）；ant 为弱产品单独页，不参与 large。图表占比为全量被推荐节点口径，与 large 命中指标（时间外 n=2,994）不同样本，勿混读。")
 build_html("exp_final.csv", "推荐分布_大节点_large.html",
-           "V2 推荐分布_大节点（全库 nonant，家族粒 21.0/51.7, n=2,994）",
-           "口径：全库 large Top1 推荐分布（七牛家族 token 已映射为代表具体 ID）；n=3,000 时间外。")
+           "V2 推荐分布_大节点（全库 nonant）",
+           "口径：Top1 推荐分布，样本 = 全库 nonant 全部被推荐节点（exp_final，n=14,966，画像交集，含训练/测试）；七牛家族 token 已映射为代表 ID。家族命中指标另按时间外测试 n=2,994 计：hit1 21.0% / hit3 51.7%——图表占比(14,966)与命中指标(2,994)样本不同，勿混读。")
