@@ -245,6 +245,63 @@ class V3DailyBusinessTrainingTest(unittest.TestCase):
         self.assertEqual(facts.iloc[0]["capacity_peak95_source"], "peak95Ratio_reconstructed")
         self.assertEqual(audit.iloc[0]["capacity_peak95_outlier_rows"], 1)
 
+    def test_daily_fact_keeps_coherent_miner_and_customer_prices(self) -> None:
+        raw = pd.DataFrame([{
+            "nodeId": "n1", "day": "2026-09-01", "customerId": "10000064",
+            "state": "online", "stage": "inService", "buildBandwidth": 500,
+            "cost_finalAmount": 10, "revenue_finalAmount": 20,
+            "cost_priceItemId": "cost-1", "cost_priceItemName": "百度移动月95",
+            "cost_priceType": "month95", "cost_price": 2400,
+            "cost_priceAfterBonus": 2500, "cost_measure": 500,
+            "revenue_priceItemId": "revenue-1",
+            "revenue_priceItemName": "百度移动月95收入",
+            "revenue_price": 2600, "revenue_measure": 500,
+        }])
+
+        facts, audit, _ = v3.build_daily_facts(raw, self.allowlist, {})
+
+        self.assertEqual(audit.iloc[0]["status"], "clean")
+        self.assertEqual(facts.iloc[0]["miner_price_item_id"], "cost-1")
+        self.assertEqual(facts.iloc[0]["miner_price_type"], "month95")
+        self.assertEqual(facts.iloc[0]["miner_unit_price"], 2400)
+        self.assertEqual(facts.iloc[0]["customer_unit_price"], 2600)
+        self.assertFalse(bool(facts.iloc[0]["miner_price_conflict"]))
+
+    def test_price_conflict_is_audited_and_dominant_signature_is_selected(self) -> None:
+        raw = pd.DataFrame([
+            {
+                "nodeId": "n1", "day": "2026-09-01", "customerId": "10000064",
+                "state": "online", "stage": "inService", "buildBandwidth": 500,
+                "cost_finalAmount": 30, "revenue_finalAmount": 50,
+                "cost_priceItemId": "cost-main", "cost_priceItemName": "主计价项",
+                "cost_priceType": "day95avg", "cost_price": 2800,
+                "cost_priceAfterBonus": 2800, "cost_measure": 400,
+                "revenue_priceItemId": "revenue-main",
+                "revenue_priceItemName": "主收入项", "revenue_price": 3000,
+                "revenue_measure": 400,
+            },
+            {
+                "nodeId": "n1", "day": "2026-09-01", "customerId": "10000064",
+                "state": "online", "stage": "inService", "buildBandwidth": 500,
+                "cost_finalAmount": 1, "revenue_finalAmount": 2,
+                "cost_priceItemId": "cost-minor", "cost_priceItemName": "次计价项",
+                "cost_priceType": "month95", "cost_price": 3200,
+                "cost_priceAfterBonus": 3200, "cost_measure": 10,
+                "revenue_priceItemId": "revenue-minor",
+                "revenue_priceItemName": "次收入项", "revenue_price": 3400,
+                "revenue_measure": 10,
+            },
+        ])
+
+        facts, audit, _ = v3.build_daily_facts(raw, self.allowlist, {})
+
+        self.assertEqual(audit.iloc[0]["status"], "clean")
+        self.assertTrue(bool(audit.iloc[0]["miner_price_conflict"]))
+        self.assertTrue(bool(audit.iloc[0]["customer_price_conflict"]))
+        self.assertEqual(facts.iloc[0]["miner_price_item_id"], "cost-main")
+        self.assertEqual(facts.iloc[0]["customer_price_item_id"], "revenue-main")
+        self.assertEqual(facts.iloc[0]["miner_price_signature_count"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

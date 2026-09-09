@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 
 import v1_recommendation_pipeline as v1
+import build_v3_daily_business_training as v3
 import v4_outcome_recommendation as v4
 
 try:
@@ -78,6 +79,25 @@ def clean_feature(value: Any) -> str:
 def filter_supported_schedule_rows(frame: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     valid = frame["network_schedule_type"].isin(ALLOWED_SCHEDULE_TYPES)
     return frame[valid].copy(), int((~valid).sum())
+
+
+def filter_training_window(
+    frame: pd.DataFrame,
+    start_day: str | None = None,
+    end_day: str | None = None,
+) -> pd.DataFrame:
+    """Filter daily outcomes and recompute run weights inside the selected window."""
+    output = frame.copy()
+    sample_days = pd.to_datetime(output["sample_day"], errors="coerce")
+    valid = sample_days.notna()
+    if start_day:
+        valid &= sample_days.ge(pd.Timestamp(start_day))
+    if end_day:
+        valid &= sample_days.le(pd.Timestamp(end_day))
+    output = output.loc[valid].copy()
+    if output.empty:
+        raise RuntimeError("the selected V5 training window contains no daily outcomes")
+    return v3.add_consecutive_sample_weights(output)
 
 
 def fit_encoder(frame: pd.DataFrame) -> dict[str, Any]:
@@ -877,6 +897,7 @@ def build(args: argparse.Namespace) -> int:
     pairs = v4.load_training_pairs(
         args.pairs, args.historical_profiles, args.latest_pressure_profiles
     )
+    pairs = filter_training_window(pairs, args.start_day, args.end_day)
     pairs, excluded_mixed_schedule_rows = filter_supported_schedule_rows(pairs)
     train, calibration, test, windows = v4.temporal_split(
         pairs, args.validation_days, args.calibration_days
@@ -1347,6 +1368,8 @@ def parse_args() -> argparse.Namespace:
     build_parser.add_argument("--report-template", type=Path, default=v4.DEFAULT_REPORT_TEMPLATE)
     build_parser.add_argument("--validation-days", type=int, default=7)
     build_parser.add_argument("--calibration-days", type=int, default=3)
+    build_parser.add_argument("--start-day", help="Optional inclusive training-window start day.")
+    build_parser.add_argument("--end-day", help="Optional inclusive training-window end day.")
     build_parser.add_argument("--min-business-support", type=float, default=30.0)
     build_parser.add_argument("--min-business-nodes", type=int, default=20)
     build_parser.add_argument("--min-segment-support", type=float, default=2.0)

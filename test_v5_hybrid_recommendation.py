@@ -24,6 +24,22 @@ class V5HybridRecommendationTest(unittest.TestCase):
         self.assertEqual(filtered["network_schedule_type"].tolist(), ["本网本省", "异网出省"])
         self.assertEqual(excluded, 2)
 
+    def test_filter_training_window_recomputes_consecutive_run_weights(self) -> None:
+        frame = pd.DataFrame([
+            {"node_id": "n1", "business": "A", "sample_day": f"2026-09-{day:02d}"}
+            for day in range(1, 6)
+        ])
+        frame["sample_weight"] = 0.2
+        frame["consecutive_valid_days"] = 5
+
+        filtered = v5.filter_training_window(frame, "2026-09-03", "2026-09-05")
+
+        self.assertEqual(filtered["sample_day"].tolist(), [
+            "2026-09-03", "2026-09-04", "2026-09-05",
+        ])
+        self.assertEqual(filtered["consecutive_valid_days"].tolist(), [3, 3, 3])
+        self.assertAlmostEqual(filtered["sample_weight"].sum(), 1.0)
+
     def test_node_effect_is_business_agnostic_and_shrunk(self) -> None:
         frame = pd.DataFrame({
             "node_id": ["n1", "n1", "n2"],

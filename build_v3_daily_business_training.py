@@ -57,6 +57,15 @@ DAILY_PROFILE_FIELDS = {
     "resourceType": "daily_resourcetype",
     "deliveryType": "daily_deliverytype",
 }
+PRICE_TEXT_FIELDS = [
+    "cost_priceItemId", "cost_priceItemName", "cost_priceType",
+    "revenue_priceItemId", "revenue_priceItemName", "settlePeriodType",
+    "priceNumber",
+]
+PRICE_NUMERIC_FIELDS = [
+    "cost_price", "cost_priceAfterBonus", "cost_measure",
+    "cost_measureBeforeSla", "revenue_price", "revenue_measure",
+]
 
 
 def clean(value: Any) -> str:
@@ -285,6 +294,77 @@ def add_capacity_peak_candidates(frame: pd.DataFrame) -> pd.DataFrame:
     return output
 
 
+def build_daily_price_summary(frame: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
+    """Select amount-dominant cost and revenue signatures per node-day."""
+    attributed = frame[frame["is_attributed"]].copy()
+    if attributed.empty:
+        return pd.DataFrame(index=pd.MultiIndex.from_arrays([[] for _ in keys], names=keys))
+
+    def summarize_side(
+        side: str,
+        amount_column: str,
+        item_id_column: str,
+        item_name_column: str,
+        price_column: str,
+        measure_column: str,
+        type_column: str | None = None,
+        after_bonus_column: str | None = None,
+    ) -> pd.DataFrame:
+        columns = [item_id_column, item_name_column, price_column]
+        if type_column:
+            columns.append(type_column)
+        if after_bonus_column:
+            columns.append(after_bonus_column)
+        valid = attributed[pd.to_numeric(attributed[price_column], errors="coerce").gt(0)].copy()
+        if valid.empty:
+            return pd.DataFrame(index=pd.MultiIndex.from_arrays([[] for _ in keys], names=keys))
+        valid["_price_weight"] = pd.to_numeric(
+            valid[amount_column], errors="coerce"
+        ).fillna(0).abs()
+        valid["_price_weight"] = valid["_price_weight"].where(
+            valid["_price_weight"].gt(0), 1e-12
+        )
+        signature_fields = [*keys, *columns]
+        grouped = valid.groupby(signature_fields, dropna=False, sort=False).agg(
+            price_weight=("_price_weight", "sum"),
+            price_rows=(price_column, "size"),
+            price_measure=(measure_column, "sum"),
+        ).reset_index()
+        grouped["price_signature_count"] = grouped.groupby(keys)[price_column].transform("size")
+        grouped = grouped.sort_values(
+            [*keys, "price_weight", "price_rows", price_column],
+            ascending=[True] * len(keys) + [False, False, False],
+        ).drop_duplicates(keys, keep="first")
+        rename = {
+            item_id_column: f"{side}_price_item_id",
+            item_name_column: f"{side}_price_item_name",
+            price_column: f"{side}_unit_price",
+            "price_measure": f"{side}_measure",
+            "price_rows": f"{side}_price_rows",
+            "price_signature_count": f"{side}_price_signature_count",
+        }
+        if type_column:
+            rename[type_column] = f"{side}_price_type"
+        if after_bonus_column:
+            rename[after_bonus_column] = f"{side}_price_after_bonus"
+        grouped = grouped.rename(columns=rename).set_index(keys)
+        grouped[f"{side}_price_conflict"] = grouped[
+            f"{side}_price_signature_count"
+        ].gt(1)
+        keep = [column for column in grouped.columns if column.startswith(f"{side}_")]
+        return grouped[keep]
+
+    miner = summarize_side(
+        "miner", "cost_finalAmount", "cost_priceItemId", "cost_priceItemName",
+        "cost_price", "cost_measure", "cost_priceType", "cost_priceAfterBonus",
+    )
+    customer = summarize_side(
+        "customer", "revenue_finalAmount", "revenue_priceItemId",
+        "revenue_priceItemName", "revenue_price", "revenue_measure",
+    )
+    return miner.join(customer, how="outer")
+
+
 def raw_sql(node_ids: list[str], start_day: str, end_day: str) -> str:
     ids = ",\n".join(rebuild.sql_quote(value) for value in node_ids)
     return f"""
@@ -313,6 +393,19 @@ def raw_sql(node_ids: list[str], start_day: str, end_day: str) -> str:
       t.deliveryType,
       CAST(t.cost_finalAmount AS DOUBLE) AS cost_finalAmount,
       CAST(t.revenue_finalAmount AS DOUBLE) AS revenue_finalAmount,
+      CAST(t.cost_priceItemId AS VARCHAR) AS cost_priceItemId,
+      CAST(t.cost_priceItemName AS VARCHAR) AS cost_priceItemName,
+      CAST(t.cost_priceType AS VARCHAR) AS cost_priceType,
+      CAST(t.cost_price AS DOUBLE) AS cost_price,
+      CAST(t.cost_priceAfterBonus AS DOUBLE) AS cost_priceAfterBonus,
+      CAST(t.cost_measure AS DOUBLE) AS cost_measure,
+      CAST(t.cost_measureBeforeSla AS DOUBLE) AS cost_measureBeforeSla,
+      CAST(t.revenue_priceItemId AS VARCHAR) AS revenue_priceItemId,
+      CAST(t.revenue_priceItemName AS VARCHAR) AS revenue_priceItemName,
+      CAST(t.revenue_price AS DOUBLE) AS revenue_price,
+      CAST(t.revenue_measure AS DOUBLE) AS revenue_measure,
+      CAST(t.settlePeriodType AS VARCHAR) AS settlePeriodType,
+      CAST(t.priceNumber AS VARCHAR) AS priceNumber,
       CAST(t.peak95 AS DOUBLE) AS peak95,
       CAST(t.analyzePeak95 AS DOUBLE) AS analyzePeak95,
       CAST(t.eveningPeak95 AS DOUBLE) AS eveningPeak95,
@@ -624,7 +717,7 @@ def build_daily_facts(
     keys = ["node_id", "sample_day"]
     text_columns = [
         *keys, "source_business", "state", "stage", "vendorSuggestCustomersName",
-        "scheduleISPs", *DAILY_PROFILE_FIELDS,
+        "scheduleISPs", *DAILY_PROFILE_FIELDS, *PRICE_TEXT_FIELDS,
     ]
     for column in text_columns:
         if column not in frame.columns:
@@ -633,6 +726,7 @@ def build_daily_facts(
     numeric_columns = [
         "buildBandwidth", "cost_finalAmount", "revenue_finalAmount", "peak95",
         "analyzePeak95", "eveningPeak95", "peak95Ratio", "transProvRate",
+        *PRICE_NUMERIC_FIELDS,
     ]
     for column in numeric_columns:
         if column not in frame.columns:
@@ -754,6 +848,17 @@ def build_daily_facts(
         frame[frame["is_unattributed_financial"]], "source_business"
     )
 
+    price_summary = build_daily_price_summary(frame, keys)
+    if not price_summary.empty:
+        summary = summary.join(price_summary)
+    for side in ["miner", "customer"]:
+        signature_column = f"{side}_price_signature_count"
+        conflict_column = f"{side}_price_conflict"
+        if signature_column not in summary:
+            summary[signature_column] = 0
+        if conflict_column not in summary:
+            summary[conflict_column] = False
+
     capacity_rows = frame[frame["is_attributed"]].copy()
     if not capacity_rows.empty:
         capacity_summary = capacity_rows.groupby(keys, sort=False).agg(
@@ -843,12 +948,17 @@ def build_daily_facts(
         "transprov_value_count", "ambiguous_virtual_count",
         "capacity_peak95_observation_count", "capacity_peak95_outlier_rows",
         "capacity_peak95_distinct_count",
+        "miner_price_signature_count", "customer_price_signature_count",
     ]:
         summary[column] = pd.to_numeric(summary[column], errors="coerce").fillna(0).astype(int)
     summary["capacity_peak95_source"] = summary["capacity_peak95_source"].fillna("missing")
     summary["capacity_peak95_conflict"] = (
         summary["capacity_peak95_conflict"].astype("boolean").fillna(False).astype(bool)
     )
+    for side in ["miner", "customer"]:
+        summary[f"{side}_price_conflict"] = (
+            summary[f"{side}_price_conflict"].astype("boolean").fillna(False).astype(bool)
+        )
     summary["status"] = "clean"
     summary["reason"] = ""
 
@@ -940,6 +1050,11 @@ def build_daily_facts(
         "capacity_peak95_distinct_count": clean_summary["capacity_peak95_distinct_count"],
         "capacity_peak95_conflict": clean_summary["capacity_peak95_conflict"],
         "capacity_peak95_outlier_rows": clean_summary["capacity_peak95_outlier_rows"],
+        **{
+            column: clean_summary[column]
+            for column in clean_summary.columns
+            if column.startswith("miner_") or column.startswith("customer_")
+        },
         **{target: clean_summary[target] for target in DAILY_PROFILE_FIELDS.values()},
     })
     if not facts.empty:
@@ -1012,6 +1127,10 @@ def run_profit_report(output_dir: Path, artifacts: dict[str, Path], summary_path
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build clean one-business-per-node-day V3 training data.")
     parser.add_argument("--source-dir", type=Path, default=DEFAULT_SOURCE_DIR)
+    parser.add_argument(
+        "--candidate-json", type=Path,
+        help="Large-node candidate JSON; defaults to source-dir/large_candidate_node_ids_recent_1m.json.",
+    )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--allowlist", type=Path, default=DEFAULT_ALLOWLIST)
     parser.add_argument("--business-map", type=Path, default=DEFAULT_BUSINESS_MAP)
@@ -1038,16 +1157,22 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    source_outcomes = pd.read_csv(
-        args.source_dir / "multibusiness_outcomes_large_recent_1m.csv",
-        usecols=["sample_day"],
-        low_memory=False,
+    if args.start_day and args.end_day:
+        start_day, end_day = args.start_day, args.end_day
+    else:
+        source_outcomes = pd.read_csv(
+            args.source_dir / "multibusiness_outcomes_large_recent_1m.csv",
+            usecols=["sample_day"],
+            low_memory=False,
+        )
+        sample_days = pd.to_datetime(source_outcomes["sample_day"], errors="coerce").dropna()
+        start_day = args.start_day or sample_days.min().strftime("%Y-%m-%d")
+        end_day = args.end_day or sample_days.max().strftime("%Y-%m-%d")
+    candidate_json = args.candidate_json or (
+        args.source_dir / "large_candidate_node_ids_recent_1m.json"
     )
-    sample_days = pd.to_datetime(source_outcomes["sample_day"], errors="coerce").dropna()
-    start_day = args.start_day or sample_days.min().strftime("%Y-%m-%d")
-    end_day = args.end_day or sample_days.max().strftime("%Y-%m-%d")
     candidate_payload = json.loads(
-        (args.source_dir / "large_candidate_node_ids_recent_1m.json").read_text(encoding="utf-8")
+        candidate_json.read_text(encoding="utf-8")
     )
     candidate_ids = sorted({clean(value) for value in candidate_payload["node_ids"] if clean(value)})
     if args.raw_input:
@@ -1126,6 +1251,12 @@ def main() -> int:
     support_path = args.output_dir / "business_support_v3_daily.csv"
     business_support.to_csv(support_path, index=False)
     metrics = json.loads((artifacts["v2_dir"] / "v2_model_metrics.json").read_text(encoding="utf-8"))
+    miner_price_covered = pd.to_numeric(
+        facts.get("miner_unit_price"), errors="coerce"
+    ).gt(0)
+    customer_price_covered = pd.to_numeric(
+        facts.get("customer_unit_price"), errors="coerce"
+    ).gt(0)
     summary = {
         "version": "v3.1_daily_weighted_virtual_bindings",
         "date_window": {"start": start_day, "end": end_day},
@@ -1160,6 +1291,16 @@ def main() -> int:
             "denominator": "node-day buildBandwidth (Mbps)",
             "objective": "0.5 * normalized miner unit income + 0.5 * normalized platform unit profit",
             "rank_weights": REWARD_ONLY_RANK_WEIGHTS,
+        },
+        "price_quality": {
+            "miner_price_coverage": float(miner_price_covered.mean()),
+            "customer_price_coverage": float(customer_price_covered.mean()),
+            "miner_price_conflict_node_days": int(facts["miner_price_conflict"].sum()),
+            "customer_price_conflict_node_days": int(facts["customer_price_conflict"].sum()),
+            "policy": (
+                "retain exact price type/item signatures for audit; price conflicts do not "
+                "exclude otherwise clean realized-income node-days"
+            ),
         },
         "v2_test": metrics.get("test", {}),
         "metric_warning": (

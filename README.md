@@ -6,6 +6,59 @@
 - 运营目标：单日收入减成本后的平台利润更好的业务。
 - 当前主目标：矿主收益和平台利润各占 50%。
 
+## 最新量化闭环（截至 2026-09-08）
+
+本轮同时训练最近 31 天主模型与最近 14 天挑战模型，两者使用相同的
+`2026-09-05` 至 `2026-09-08` 测试集。挑战模型未通过覆盖度、推荐集中度和
+低可信占比门槛，因此正式推荐继续使用 31 天模型；14 天窗口只用于近期趋势
+监控和容量预测。
+
+```text
+31 天训练数据：280,981 个干净节点日，12,063 个节点，26 个观测业务
+31 天候选业务：21 个
+31 天测试：矿主 R²=0.128，平台 R²=0.117
+31 天可信度：低；82.9% 节点低可信，91.5% 的 Top1 平台利润区间跨零
+14 天测试：矿主 R²=0.156，平台 R²=0.104
+14 天问题：Top1 最大集中度 75.7%，低可信节点 95.7%
+容量：1,891 个四层容量池，1,454 个证据充分，340 个规划调整，53 个容量阻断
+价格：71 个业务+运营商组合，6,834 个不混合计价类型/计价项的节点日主签名
+```
+
+最新报告：
+
+```text
+recent_31d_large_mainstream_v5_hybrid_20260908/v5_business_recommendation_report.html
+recent_31d_large_mainstream_v6_capacity_20260908/v6_capacity_report.html
+recent_31d_large_mainstream_v6_capacity_20260908/v6_node_report.html
+recent_31d_large_mainstream_price_report_20260908/business_price_report.html
+recent_v5_dual_window_comparison_20260908/v5_dual_window_comparison.md
+最新量化报告_20260908.md
+```
+
+完整重建使用明确日期窗口，避免旧目录决定训练日期：
+
+```bash
+python3 build_v3_daily_business_training.py \
+  --candidate-json recent_31d_large_20260908/large_candidate_node_ids_recent_1m.json \
+  --output-dir recent_31d_large_mainstream_v3_daily_weighted_20260908 \
+  --current-nodes current_non_idc_large_scan_20260909/current_online_inservice_non_idc_large_nodes_20260909.csv \
+  --start-day 2026-08-09 --end-day 2026-09-08 --refresh
+
+python3 v5_hybrid_recommendation.py build \
+  --pairs recent_31d_large_mainstream_v3_daily_weighted_20260908/v1_large_mainstream_outputs/v1_training_pairs.csv \
+  --historical-profiles historical_node_profiles_20260909/current_non_idc_large_node_attrs_20260909.csv \
+  --latest-pressure-profiles latest_node_pressure_profiles_20260909.csv \
+  --current-nodes current_non_idc_large_scan_20260909/current_online_inservice_non_idc_large_nodes_20260909.csv \
+  --current-business current_non_idc_large_scan_20260909/current_business_from_wide_20260908_20260908.csv \
+  --source-summary recent_31d_large_mainstream_v3_daily_weighted_20260908/v3_daily_training_summary.json \
+  --output-dir recent_31d_large_mainstream_v5_hybrid_20260908 \
+  --start-day 2026-08-09 --end-day 2026-09-08
+
+python3 build_business_price_report.py \
+  --facts recent_31d_large_mainstream_v3_daily_weighted_20260908/multibusiness_outcomes_large_mainstream_v3_daily.csv \
+  --output-dir recent_31d_large_mainstream_price_report_20260908
+```
+
 ## 当前闭环入口
 
 V1 用于历史节点收益闭环和存量纠偏，V2 用于新节点画像泛化推荐。
