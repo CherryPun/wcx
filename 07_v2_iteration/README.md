@@ -21,9 +21,8 @@
 ```
 07_v2_iteration/
 ├─ README.md                本文件（交付入口）
-├─ README_V2迭代方案.md      V2 方案与执行顺序
-├─ V2执行结果与定稿.md       交付基线/最终结果/结案记录
-├─ V2最优方案.md             收敛建议
+├─ V2执行结果与定稿.md       交付基线/最终结果/结案记录/已知风险
+├─ docs_history/            历史收敛记录（README_V2迭代方案、V2最优方案；非当前口径）
 ├─ outputs/                  终版可视化/复核/指标（可查看）
 │  ├─ 全节点_large_fullpool.html
 │  ├─ 全节点_ant.html
@@ -54,6 +53,11 @@ python v2_data/stage_e2e.py     # 产物写 v2_data/_rerun/，指标见 e2e_metr
 
 - 指标口径：家族粒命中按内部 token（FQCDNV/FQTZV）计算（`exp_metrics.json` 的 top1_distribution 含 token）；对外 HTML 与 `large_review_fullpool.csv` 均已映射为具体代表 ID（10000292/10000281），；复核表另保留家族一致性列 tb_fam/top1_fam（token，用于核对家族粒命中）。
 - 一键校验：仓库 `run_verify_all.py` 仅复现 v1 历史口径；V2/全库验收走 `v2_data/EXEC_expansion_runbook.md`（数据重建）与 `v2_data/_rerun/exp_metrics.json`。
+- 校验/冒烟（无全库数据也可运行）：
+  - `python v2_data/run_verify_v2.py` —— 对 `outputs/` 交付产物做阈值断言（21.0/WAPE/n=2,994/表结构）；数据就绪可加 `--refull` 重跑后复验；
+  - `python v2_data/run_smoke_v2.py` —— 用入库冒烟子集 `v2_data/smoke/` 跑通整条流水线（结构性断言，**不承诺复现 21.0**）；
+  - `python v2_data/check_data_ready.py` —— 数据就绪自检（schema/规模 vs `data_manifest.json`）；
+  - `python v2_data/tests/test_pure_funcs.py` —— 纯函数单测（family 归并/门禁/时间外切分/特征矩阵，无数据依赖）。
 
 
 - “在跑=有账”不等于有量；ant 为弱产品（约 8%），勿与 large 混排；混训 36%、big 13.8% 不作交付。
