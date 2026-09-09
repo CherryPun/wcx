@@ -96,6 +96,22 @@ def pie_of(series, n_title, pal, total_note):
     return bar_svg, pie_svg, leg_html
 
 
+def diff_table(rec: pd.Series, cur: pd.Series, topn: int = 20) -> str:
+    """推荐 Top1 vs 当前在跑 差异明细表（无提示列）。返回 <table> HTML。"""
+    rc = rec.value_counts()
+    cc = cur.value_counts()
+    keys = sorted(set(rc.index) | set(cc.index),
+                  key=lambda b: -(rc.get(b, 0) + cc.get(b, 0)))[:topn]
+    rows = []
+    for b in keys:
+        rn = int(rc.get(b, 0)); cn = int(cc.get(b, 0)); delta = rn - cn
+        cls = " up" if delta > 0 else (" dn" if delta < 0 else "")
+        rows.append(f"<tr><td>{label(b)}</td><td class='n'>{rn}</td><td class='n'>{cn}</td>"
+                    f"<td class='n{cls}'>{delta:+d}</td></tr>")
+    return (f"<table><thead><tr><th>业务</th><th class='n'>推荐 Top1</th><th class='n'>当前在跑</th>"
+            f"<th class='n'>差值(推荐−当前)</th></tr></thead><tbody>{''.join(rows)}</tbody></table>")
+
+
 def build_html(fn, out_name, title, note, cur_series):
     d = pd.read_csv(OUT / fn, dtype={"node_id": str})
     t1 = d["top1_business"].astype(str).map(disp)
@@ -107,9 +123,12 @@ def build_html(fn, out_name, title, note, cur_series):
         cbar, cpie, cleg = pie_of(cur_series, "当前在跑业务（近7天有效结算）—— 前十", pal, "")
         block += (f"""<div class='card'>{cbar}</div>
 <div class='card two'><div><h3>Top10 占全部当前在跑</h3>{cpie}</div><div><h3>图例</h3>{cleg}</div></div>""")
+        block += ("<div class='card'><h3>推荐 Top1 vs 当前在跑（差异明细，Top20；差值=推荐−当前，正=模型比现实推得多）</h3>"
+                  + diff_table(t1, cur_series) + "</div>")
     html = ("<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'><title>" + title + "</title><style>"
             "body{font-family:Microsoft YaHei,sans-serif;margin:16px;background:#f6f7f9}.card{background:#fff;border-radius:10px;padding:16px 20px;margin:12px 0}"
             ".lg{display:flex;align-items:center;gap:8px;font-size:12px;margin:3px 0}.lg span{width:13px;height:13px;border-radius:3px;flex:none}.two{display:flex;gap:26px;flex-wrap:wrap}.two>div{min-width:300px;flex:1}.m{color:#647181}"
+            "table{border-collapse:collapse;width:100%;font-size:12px;background:#fff;margin-top:6px}th,td{border:1px solid #d4dbe3;padding:4px 8px;text-align:left}th{background:#eef2f7}.n{text-align:right;font-variant-numeric:tabular-nums}.up{color:#b45309;font-weight:600}.dn{color:#2563eb}"
             "</style></head><body><h2>" + title + "</h2><p class='m'>" + note + "</p>"
             + block + "</body></html>")
     (OUT / out_name).write_text(html, encoding="utf-8")
