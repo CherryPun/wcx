@@ -217,9 +217,14 @@ def main():
     r2 = float(r2_score(y_te, p_te))
     print("金额评估 cost WAPE", round(wape, 4), "R2", round(r2, 4))
 
-    # 容量软参考
-    cap_df = pd.read_csv(DATA / "business_capacity_summary.csv", dtype={"business": str})
-    cap_map = cap_df.set_index("business").to_dict("index")
+    # 容量软参考（V2_ORIG 才进入排序；文件不入库，缺失则关闭该软约束）
+    cap_map = {}
+    _cap_p = DATA / "business_capacity_summary.csv"
+    if _cap_p.exists():
+        cap_df = pd.read_csv(_cap_p, dtype={"business": str})
+        cap_map = cap_df.set_index("business").to_dict("index")
+    else:
+        print("WARN 缺 business_capacity_summary.csv → 容量软参考关闭（仅 V2_ORIG 用）")
     def cap_penalty(b):
         info = cap_map.get(str(b))
         if not info:
@@ -228,13 +233,17 @@ def main():
         cv = float(info.get("capacity_upper_mbps") or 0)
         return min(1.0, over / cv) if cv > 0 else 0.0
 
-    # 带宽利用率辅助（自身跑该业务时）
-    bw_daily = pd.read_csv(DATA / "bw_daily_7d.csv", dtype={"node_id": str, "business": str}, low_memory=False)
-    bw_daily["peak95_mbps"] = pd.to_numeric(bw_daily["peak95"], errors="coerce") / 1e6
-    bw_daily["business"] = bw_daily["business"].astype(str).str.replace(r"\.0$", "", regex=True)
+    # 带宽利用率辅助（自身跑该业务时；文件不入库，缺失则近似不含）
     bw_map = {}
-    for (nid, biz), g in bw_daily.groupby(["node_id", "business"]):
-        bw_map[(str(nid), str(biz))] = float(g["peak95_mbps"].max())
+    _bw_p = DATA / "bw_daily_7d.csv"
+    if _bw_p.exists():
+        bw_daily = pd.read_csv(_bw_p, dtype={"node_id": str, "business": str}, low_memory=False)
+        bw_daily["peak95_mbps"] = pd.to_numeric(bw_daily["peak95"], errors="coerce") / 1e6
+        bw_daily["business"] = bw_daily["business"].astype(str).str.replace(r"\.0$", "", regex=True)
+        for (nid, biz), g in bw_daily.groupby(["node_id", "business"]):
+            bw_map[(str(nid), str(biz))] = float(g["peak95_mbps"].max())
+    else:
+        print("WARN 缺 bw_daily_7d.csv → 带宽辅助分无数据（近似不含）")
 
     # 节点相似矩阵（训练节点作参照）
     attrs_all = attrs.copy()
