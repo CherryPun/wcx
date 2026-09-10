@@ -64,6 +64,8 @@ FEATURE_FIELDS = [
     "packet_loss_satisfaction_bucket",
 ]
 ENCODE_FIELDS = ["business", *FEATURE_FIELDS]
+if os.getenv("V5_TREND", "0") == "1":
+    ENCODE_FIELDS = ENCODE_FIELDS + ["business_trend"]
 
 
 def require_ml_dependencies() -> None:
@@ -466,6 +468,9 @@ def score_profile_rows(frame: pd.DataFrame, runtime: RuntimeModel) -> list[list[
     candidates = runtime.metadata["candidate_businesses"]
     repeated = frame.loc[frame.index.repeat(len(candidates))].copy().reset_index(drop=True)
     repeated["business"] = np.tile(candidates, len(frame))
+    if "business_trend" in ENCODE_FIELDS:
+        trend_map = runtime.metadata.get("latest_business_trend", {})
+        repeated["business_trend"] = repeated["business"].map(trend_map).fillna("trend_unknown")
     predictions = raw_runtime_predictions(repeated, runtime)
     results: list[list[dict[str, Any]]] = []
     for position in range(len(frame)):
@@ -926,6 +931,12 @@ def build(args: argparse.Namespace) -> int:
     calibration = calibration[calibration["business"].isin(candidates)].copy()
     test = test[test["business"].isin(candidates)].copy()
 
+    # 量趋势（新）：每业务取窗口内最新一天的 business_trend 作为推断期特征
+    latest_business_trend: dict[str, str] = {}
+    if "business_trend" in ENCODE_FIELDS and "business_trend" in pairs.columns:
+        _last = pairs.sort_values("sample_day").groupby("business")["business_trend"].last()
+        latest_business_trend = {str(k): str(v) for k, v in _last.items()}
+
     evaluation_baseline = v4.fit_model(
         train,
         candidates,
@@ -1062,6 +1073,7 @@ def build(args: argparse.Namespace) -> int:
         "node_effects": effects,
         "calibration": calibration_map,
         "validation_by_business": {},
+        "latest_business_trend": latest_business_trend,
     }
     evaluation_runtime = RuntimeModel(
         metadata=evaluation_metadata,
@@ -1169,6 +1181,7 @@ def build(args: argparse.Namespace) -> int:
         "calibration": calibration_map,
         "validation_by_business": validation_lookup,
         "temporal_windows": windows,
+        "latest_business_trend": latest_business_trend,
         "sample_weight_policy": "1 / consecutive valid days in the same node-business run",
         "propensity_weight_policy": "stabilized and clipped to [0.25, 4.0], selected only on calibration",
     }
