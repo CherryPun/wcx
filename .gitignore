@@ -48,3 +48,4 @@ v1_business_name_missing_*.csv
 
 # wcx2 新增本地产物（带（新）后缀的 csv 不入库）
 *（新）.csv
+*（新）.txt
