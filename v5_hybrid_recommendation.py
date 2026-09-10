@@ -106,6 +106,10 @@ def filter_training_window(
         age = (day.max() - day).dt.days.clip(lower=0)
         factor = 0.5 ** (age / half_life)
         factor = factor / factor.mean()
+        cap = float(os.getenv("V5_RECENCY_WEIGHT_CAP", "0") or 0)
+        if cap > 0:
+            factor = factor.clip(upper=cap)
+            factor = factor / factor.mean()
         result = result.copy()
         result["sample_weight"] = pd.to_numeric(result["sample_weight"], errors="coerce").fillna(1.0) * factor
     return result
