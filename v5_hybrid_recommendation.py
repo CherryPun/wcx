@@ -12,6 +12,7 @@ import argparse
 from dataclasses import dataclass
 import json
 import math
+import os
 from pathlib import Path
 from typing import Any
 
@@ -97,7 +98,17 @@ def filter_training_window(
     output = output.loc[valid].copy()
     if output.empty:
         raise RuntimeError("the selected V5 training window contains no daily outcomes")
-    return v3.add_consecutive_sample_weights(output)
+    result = v3.add_consecutive_sample_weights(output)
+    # 时效权重（新）：近端加权；半衰期天数由 env V5_RECENCY_HALF_LIFE 控制，默认 0=关闭
+    half_life = float(os.getenv("V5_RECENCY_HALF_LIFE", "0") or 0)
+    if half_life > 0:
+        day = pd.to_datetime(result["sample_day"], errors="coerce")
+        age = (day.max() - day).dt.days.clip(lower=0)
+        factor = 0.5 ** (age / half_life)
+        factor = factor / factor.mean()
+        result = result.copy()
+        result["sample_weight"] = pd.to_numeric(result["sample_weight"], errors="coerce").fillna(1.0) * factor
+    return result
 
 
 def fit_encoder(frame: pd.DataFrame) -> dict[str, Any]:
