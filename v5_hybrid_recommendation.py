@@ -114,6 +114,16 @@ def filter_training_window(
             factor = factor / factor.mean()
         result = result.copy()
         result["sample_weight"] = pd.to_numeric(result["sample_weight"], errors="coerce").fillna(1.0) * factor
+    # 业务归一化权重（新）：抑制少数业务对 loss 的支配；alpha 由 V5_BUSINESS_BALANCE 控制，默认 0=关闭
+    balance = float(os.getenv("V5_BUSINESS_BALANCE", "0") or 0)
+    if balance > 0:
+        w = pd.to_numeric(result["sample_weight"], errors="coerce").fillna(1.0)
+        biz_total = w.groupby(result["business"]).transform("sum")
+        mean_total = w.sum() / max(result["business"].nunique(), 1)
+        bfactor = (mean_total / biz_total.replace(0, np.nan)).pow(balance).fillna(1.0)
+        bfactor = bfactor / bfactor.mean()
+        result = result.copy()
+        result["sample_weight"] = w * bfactor
     return result
 
 
