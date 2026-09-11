@@ -108,7 +108,7 @@ def filter_training_window(
         age = (day.max() - day).dt.days.clip(lower=0)
         factor = 0.5 ** (age / half_life)
         factor = factor / factor.mean()
-        cap = float(os.getenv("V5_RECENCY_WEIGHT_CAP", "1.5") or 0)
+        cap = float(os.getenv("V5_RECENCY_WEIGHT_CAP", "2.0") or 0)
         if cap > 0:
             factor = factor.clip(upper=cap)
             factor = factor / factor.mean()
@@ -240,7 +240,7 @@ def fit_booster(
         "alpha": 0.2,
         "tree_method": "hist",
         "seed": seed,
-        "nthread": 6,
+                "nthread": int(os.getenv("V5_NTHREAD", "1")),
     }
     return xgb.train(
         parameters,
@@ -280,7 +280,7 @@ def fit_final_booster(
         "alpha": 0.2,
         "tree_method": "hist",
         "seed": seed,
-        "nthread": 6,
+                "nthread": int(os.getenv("V5_NTHREAD", "1")),
     }
     return xgb.train(parameters, dtrain, num_boost_round=max(int(rounds), 1), verbose_eval=False)
 
