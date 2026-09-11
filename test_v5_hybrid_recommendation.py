@@ -40,6 +40,71 @@ class V5HybridRecommendationTest(unittest.TestCase):
         self.assertEqual(filtered["consecutive_valid_days"].tolist(), [3, 3, 3])
         self.assertAlmostEqual(filtered["sample_weight"].sum(), 1.0)
 
+    def _recency_frame(self):
+        frame = pd.DataFrame([
+            {"node_id": "n1", "business": "A", "sample_day": "2026-09-01"},
+            {"node_id": "n2", "business": "B", "sample_day": "2026-09-08"},
+            {"node_id": "n3", "business": "C", "sample_day": "2026-09-29"},
+        ])
+        frame["sample_weight"] = 1.0
+        frame["consecutive_valid_days"] = 3
+        return frame
+
+    def test_recency_weights_follow_half_life(self) -> None:
+        import os
+        old = os.environ.get("V5_RECENCY_HALF_LIFE")
+        try:
+            os.environ["V5_RECENCY_HALF_LIFE"] = "7"
+            os.environ["V5_RECENCY_WEIGHT_CAP"] = "0"
+            f = v5.filter_training_window(self._recency_frame(), "2026-09-01", "2026-09-29")
+            f = f.sort_values("sample_day")
+            w = f["sample_weight"].to_numpy()
+            # 相隔 7 天 → 晚者权重应为早者 2 倍
+            self.assertAlmostEqual(w[1] / w[0], 2.0, places=4)
+            self.assertAlmostEqual((w[2] / w[0]) * (0.5 ** (28 / 7)), 1.0, places=4)
+        finally:
+            if old is None:
+                os.environ.pop("V5_RECENCY_HALF_LIFE", None)
+            else:
+                os.environ["V5_RECENCY_HALF_LIFE"] = old
+
+    def test_recency_disabled_equals_baseline(self) -> None:
+        import os
+        old = os.environ.get("V5_RECENCY_HALF_LIFE")
+        try:
+            os.environ["V5_RECENCY_HALF_LIFE"] = "0"
+            f = v5.filter_training_window(self._recency_frame(), "2026-09-01", "2026-09-29")
+            self.assertAlmostEqual(float(f["sample_weight"].std()), 0.0, places=6)
+        finally:
+            if old is None:
+                os.environ.pop("V5_RECENCY_HALF_LIFE", None)
+            else:
+                os.environ["V5_RECENCY_HALF_LIFE"] = old
+
+    def test_recency_weight_cap_reduces_spread(self) -> None:
+        import os
+        old_hl = os.environ.get("V5_RECENCY_HALF_LIFE")
+        old_cap = os.environ.get("V5_RECENCY_WEIGHT_CAP")
+        try:
+            os.environ["V5_RECENCY_HALF_LIFE"] = "7"
+            os.environ["V5_RECENCY_WEIGHT_CAP"] = "0"
+            uncapped = v5.filter_training_window(self._recency_frame(), "2026-09-01", "2026-09-29")
+            spread_uncapped = uncapped["sample_weight"].max() / uncapped["sample_weight"].min()
+            os.environ["V5_RECENCY_WEIGHT_CAP"] = "1.5"
+            capped = v5.filter_training_window(self._recency_frame(), "2026-09-01", "2026-09-29")
+            spread_capped = capped["sample_weight"].max() / capped["sample_weight"].min()
+            self.assertLess(spread_capped, spread_uncapped)
+        finally:
+            if old_hl is None:
+                os.environ.pop("V5_RECENCY_HALF_LIFE", None)
+            else:
+                os.environ["V5_RECENCY_HALF_LIFE"] = old_hl
+            if old_cap is None:
+                os.environ.pop("V5_RECENCY_WEIGHT_CAP", None)
+            else:
+                os.environ["V5_RECENCY_WEIGHT_CAP"] = old_cap
+
+
     def test_node_effect_is_business_agnostic_and_shrunk(self) -> None:
         frame = pd.DataFrame({
             "node_id": ["n1", "n1", "n2"],
