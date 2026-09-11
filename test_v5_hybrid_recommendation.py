@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# [wcx2 修改（改）] 新增 3 个时效权重单测（半衰期/回退/上限）；详见 修改文件清单（改）.md。
 from __future__ import annotations
 
 import json

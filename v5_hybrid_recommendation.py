@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# [wcx2 修改（改）] 相对 RJ 原分支：近端时效权重（默认 HL7+cap2.0）、V5_NTHREAD（默认 1）、
+# 趋势/平衡/校准 env 开关（默认关）。详见 修改文件清单（改）.md。
 """V5 fair temporal benchmark and hybrid node-business recommender.
 
 V5 keeps the audited V4 daily outcomes and ten-field profile whitelist. It
