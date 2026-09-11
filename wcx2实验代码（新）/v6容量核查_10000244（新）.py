@@ -12,7 +12,7 @@ import pandas as pd
 
 import v6_capacity_aware_allocation as v6
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent.parent
 
 
 def main() -> int:

@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent.parent
 V5 = HERE / "recent_month_large_mainstream_v5_hybrid（新）"
 V6 = HERE / "recent_month_large_mainstream_v6_capacity_full（新）"
 

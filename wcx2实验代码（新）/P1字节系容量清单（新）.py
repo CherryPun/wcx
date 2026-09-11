@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent.parent
 V6 = HERE / "recent_month_large_mainstream_v6_capacity_full（新）"
 TARGETS = ["1382680008", "10000224", "10000096", "10000041"]
 
