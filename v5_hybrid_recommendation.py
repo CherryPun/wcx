@@ -518,6 +518,11 @@ def score_profile_rows(frame: pd.DataFrame, runtime: RuntimeModel) -> list[list[
             }
             validation = runtime.metadata.get("validation_by_business", {}).get(business, {})
             item["confidence"] = confidence_for(item, validation)
+            # 校准层（新）：按业务偏置修正预测
+            calib = runtime.metadata.get("business_calibration_factor", {}).get(str(business), {})
+            if calib:
+                item[v4.TARGET_MINER] = item[v4.TARGET_MINER] * float(calib.get("miner", 1.0))
+                item[v4.TARGET_PLATFORM] = item[v4.TARGET_PLATFORM] * float(calib.get("platform", 1.0))
             row_items.append(item)
 
         miner_values = [item[v4.TARGET_MINER] for item in row_items]
@@ -1021,6 +1026,20 @@ def build(args: argparse.Namespace) -> int:
         ]
         selected_sources[target] = str(target_rows.sort_values(["rmse", "mae", "model"]).iloc[0]["model"])
 
+    # 校准层（新）：在校准期按业务做偏置修正；env V5_CALIB=1 开启，默认关闭
+    business_calibration_factor: dict[str, dict[str, float]] = {}
+    if os.getenv("V5_CALIB", "0") == "1":
+        for target, key in [(v4.TARGET_MINER, "miner"), (v4.TARGET_PLATFORM, "platform")]:
+            src = selected_sources[target]
+            pred = np.asarray(prediction_bank[src]["calibration"][target], dtype=float)
+            actual = pd.to_numeric(calibration[target], errors="coerce").to_numpy(dtype=float)
+            frame = pd.DataFrame({"business": calibration["business"].astype(str), "pred": pred, "act": actual})
+            for biz, g in frame.groupby("business"):
+                sp = float(g["pred"].clip(lower=0).sum())
+                sa = float(np.nansum(g["act"]))
+                f = (sa / sp) if sp > 0 else 1.0
+                business_calibration_factor.setdefault(str(biz), {})[key] = float(np.clip(f, 0.5, 2.0))
+
     selected_train = {
         target: prediction_bank[selected_sources[target]]["train"][target] for target in TARGETS
     }
@@ -1084,6 +1103,7 @@ def build(args: argparse.Namespace) -> int:
         "calibration": calibration_map,
         "validation_by_business": {},
         "latest_business_trend": latest_business_trend,
+        "business_calibration_factor": business_calibration_factor,
     }
     evaluation_runtime = RuntimeModel(
         metadata=evaluation_metadata,
@@ -1192,6 +1212,7 @@ def build(args: argparse.Namespace) -> int:
         "validation_by_business": validation_lookup,
         "temporal_windows": windows,
         "latest_business_trend": latest_business_trend,
+        "business_calibration_factor": business_calibration_factor,
         "sample_weight_policy": "1 / consecutive valid days in the same node-business run",
         "propensity_weight_policy": "stabilized and clipped to [0.25, 4.0], selected only on calibration",
     }
