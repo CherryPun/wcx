@@ -48,23 +48,10 @@
 
 复现链：`build_recent_large_training → build_mainstream_large_training → build_v3_daily_business_training → v5_hybrid_recommendation → v6_capacity_aware_allocation`。
 
-## 4. 未决项与责任方
-
-| 未决项 | 说明 | 责任方 |
-|---|---|---|
-| 默认行为变更 | recency 默认开、nthread=1 | **RJ 决策** |
-| 七牛虚拟权威绑定 | 需 `NIULINK_AUTH`；否则审计映射并标注待核 | 平台 / 竹鑫 |
-| 需求进排序 | 现仅事后容量约束；"排序不含需求"未解 | 双方（需需求数据） |
-| 因果验证 | 现为观察性口径，无 OPE/A-B | 业务权限方 |
-| 平台利润模型弱 | R²≈0.007 | 后续专项 |
-| current 覆盖 | 仍有约 142 unknown（口径） | 数据侧 |
-| 数据打包 | 未随仓库分发 | 交付方（如 RJ 需要，可另行打包核心输入） |
-
-## 5. 变更文件
+## 4. 变更文件
 
 - 修改（不能改名，见 `修改文件清单（改）.md`）：`v5_hybrid_recommendation.py`、`test_v5_hybrid_recommendation.py`、`README.md`、`.gitignore`；
 - 新增（（新））：见 `正式交付索引（新）.md`。
 
-## 6. 结论
-- **结论与建议改动可交付评审**；
-- **是否合并**取决于：① RJ 对默认变更的态度；② 数据复现安排；③ 是否接受"观察性证据"。
+## 5. 结论
+- **结论与建议改动可交付评审**。
