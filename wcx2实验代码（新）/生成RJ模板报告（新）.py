@@ -55,10 +55,47 @@ slim = {
     "concentration": [{k: clean(v) for k, v in c.items()} for c in data.get("concentration", [])],
 }
 JS_OUT.write_text("window.V5_REPORT_DATA=" + json.dumps(slim, ensure_ascii=False, separators=(",", ":")) + ";", encoding="utf-8")
-HTML_OUT.write_text(
-    tmpl.replace("v5_frontend_report_data.js", JS_OUT.name).replace("<title>", "<title>wcx2_"),
-    encoding="utf-8",
-)
+
+
+def pie_html(conc, topn=10):
+    import math
+    items = [(str(c.get("business_name_top1") or c.get("business_top1")),
+              int(c.get("node_count") or 0), float(c.get("share") or 0)) for c in conc]
+    items = [x for x in items if x[1] > 0][:topn]
+    total = sum(n for _, n, _ in items)
+    rest = max(int(sum(int(c.get("node_count") or 0) for c in conc)) - total, 0)
+    pal = ["#1769aa", "#16835f", "#a86600", "#7c3aed", "#c9362b", "#0d9488", "#ca8a04", "#db2777", "#4f46e5", "#16a34a"]
+    cx, cy, r = 190, 190, 160
+    segs, ang = [], 0.0
+    def seg(span, color):
+        a0, a1 = math.radians(ang - 90), math.radians(ang + span - 90)
+        x0, y0 = cx + r * math.cos(a0), cy + r * math.sin(a0)
+        x1, y1 = cx + r * math.cos(a1), cy + r * math.sin(a1)
+        lg = 1 if span > 180 else 0
+        return f'<path d="M{cx},{cy} L{x0:.2f},{y0:.2f} A{r},{r} 0 {lg} 1 {x1:.2f},{y1:.2f} Z" fill="{color}" stroke="#fff" stroke-width="1"/>'
+    total_all = max(total + rest, 1)
+    for i, (nm, n, sh) in enumerate(items):
+        span = n / total_all * 360.0
+        segs.append(seg(span, pal[i % len(pal)]))
+        ang += span
+    if rest > 0:
+        segs.append(seg(rest / total_all * 360.0, "#e2e8f0"))
+    leg = "".join(f"<div style='display:flex;gap:8px;align-items:center;font-size:13px;margin:3px 0'>"
+                  f"<span style='width:12px;height:12px;background:{pal[i%len(pal)]};display:inline-block'></span>"
+                  f"{nm}（{n}，{sh*100:.1f}%）</div>" for i, (nm, n, sh) in enumerate(items))
+    if rest:
+        leg += (f"<div style='display:flex;gap:8px;align-items:center;font-size:13px;margin:3px 0'>"
+                f"<span style='width:12px;height:12px;background:#e2e8f0;display:inline-block'></span>其余业务（{rest}）</div>")
+    svg = (f"<svg viewBox='0 0 380 400' width='330'>" + "".join(segs) +
+           f"<text x='{cx}' y='385' text-anchor='middle' font-size='12' fill='#607080'>Top10 合计占比 {total/total_all*100:.1f}%</text></svg>")
+    return ("<section class='panel'><h2>Top10 推荐业务占比（饼图）</h2>"
+            "<div style='display:flex;gap:24px;flex-wrap:wrap;padding:12px 14px'>"
+            f"<div>{svg}</div><div>{leg}</div></div></section>")
+
+
+html = tmpl.replace("v5_frontend_report_data.js", JS_OUT.name).replace("<title>", "<title>wcx2_")
+html = html.replace("</main>", pie_html(slim.get("concentration", [])) + "</main>", 1)
+HTML_OUT.write_text(html, encoding="utf-8")
 print("html", round(HTML_OUT.stat().st_size / 1024, 1), "KB; js", round(JS_OUT.stat().st_size / 1024, 1),
       "KB; kept fields", len(used), "of", len(recs[0]) if recs else 0)
 print("has names:", "business_name_top1" in used, "| has amounts:",
