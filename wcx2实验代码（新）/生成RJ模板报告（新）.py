@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "recent_month_large_mainstream_v5_default（新）"
+SRC = ROOT / "recent_month_large_mainstream_v5_sw_7c2.0（新）"
 HTML_IN = SRC / "v5_business_recommendation_report.html"
 JS_IN = SRC / "v5_frontend_report_data.js"
 HTML_OUT = ROOT / "节点推荐与分布（新）.html"
