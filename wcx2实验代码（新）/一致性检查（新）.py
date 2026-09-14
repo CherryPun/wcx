@@ -45,10 +45,53 @@ def fixture_self_test() -> None:
         raised = True
     check("fixture: 完整性断言能拦住 NaN", raised)
 
+    # 复现 2026-09-14 那次真实错误：部分行 NaN 时，"恒等式对平"会静默通过
+    df2 = pd.DataFrame({"left": [1.0, 2.0, 3.0, 4.0], "adj_col": [1.0, 2.0, None, 4.0]})
+    false_pass = (df2["left"] - df2["adj_col"]).abs().max() < 1e-9  # max 跳过 NaN -> 0.0 -> 假 PASS
+    still_raised = False
+    try:
+        require_complete(df2["adj_col"], "fixture.adj_col")
+    except AssertionError:
+        still_raised = True
+    check("fixture: 部分 NaN 的恒等式检查必须被拦", false_pass and still_raised)
+
+
+CDN_AUDIT = Path.home() / "Desktop"
+
+
+def denominator_reconciliation() -> None:
+    """成本归因复算的分母对账：行数/科目数必须与预期一致（防止静默丢样本）。"""
+    files = sorted(CDN_AUDIT.glob("七牛CDN*.xlsx"))
+    if not files:
+        print("\n[SKIP] 桌面无七牛CDN xlsx，跳过分母对账")
+        return
+    print("\n=== 3. 分母对账（成本归因表）===")
+    expect_rows = {"01_机房级调账汇总": 48, "02_CDN追加承担_业务计费项": 173}
+    found = 0
+    for f in files:
+        xl = pd.ExcelFile(f)
+        for sheet, want in expect_rows.items():
+            if sheet not in xl.sheet_names:
+                continue
+            df = xl.parse(sheet)
+            check(f"{f.name[:8]} {sheet[:12]} 行数 == {want}", len(df) == want, f"n={len(df)}")
+            for col in df.columns:
+                if "毛利" in col or "成本调整" in col:
+                    n_na = int(df[col].isna().sum())
+                    if n_na:
+                        print(f"   ⚠ {sheet}.{col} 有 {n_na}/{len(df)} 个 NaN")
+            found += 1
+        if {"03_其他业务成本冲回_节点级", "04_CDN追加承担_节点级"} <= set(xl.sheet_names):
+            n = len(xl.parse("03_其他业务成本冲回_节点级")) + len(xl.parse("04_CDN追加承担_节点级"))
+            check(f"{f.name[:8]} 03+04 节点级行数 == 2580", n == 2580, f"n={n}")
+            found += 1
+    check("至少校验到一张归因表", found > 0, f"sheets_checked={found}")
+
 
 def main() -> None:
     print("=== 1. fixture 自检（含 NaN 陷阱）===")
     fixture_self_test()
+    denominator_reconciliation()
 
     if not V3.exists():
         print("\n[SKIP] 未找到本地 V3 产物目录，跳过审计对账（clone 后属正常）")
