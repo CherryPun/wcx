@@ -10,9 +10,12 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "recent_month_large_mainstream_v5_cap20_curfull（新）"
+import sys
+SRC = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "recent_month_large_mainstream_v5_sw_7c2.0（新）"
 HTML_IN = SRC / "v5_business_recommendation_report.html"
 JS_IN = SRC / "v5_frontend_report_data.js"
+if not JS_IN.exists():
+    raise SystemExit(f"缺少报告数据，请先按 采用配置（新）.md 跑 V5 build 生成：{SRC}")
 HTML_OUT = ROOT / "节点推荐与分布（新）.html"
 JS_OUT = ROOT / "节点推荐与分布_data（新）.js"
 
