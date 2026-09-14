@@ -15,12 +15,27 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PY = sys.executable
 V3 = ROOT / "recent_month_large_mainstream_v3_daily_weighted（新）"
-PAIRS = V3 / "v1_training_pairs_large_mainstream_recent_1m.csv"
+V3_LONG = ROOT / "recent_month_large_mainstream_v3_6m（新）"
+PAIRS_LONG = V3_LONG / "v1_training_pairs_large_mainstream_recent_1m.csv"
+PAIRS = PAIRS_LONG if PAIRS_LONG.exists() else V3 / "v1_training_pairs_large_mainstream_recent_1m.csv"
 PROFILES = ROOT / "recent_month_large_1d（新）" / "multibusiness_nodes_large_recent_1m.csv"
 CURRENT = V3 / "current_online_inservice_non_idc_large_nodes_v3.csv"
 SUMMARY = V3 / "v3_daily_training_summary.json"
-END_DAYS = ["2026-09-09", "2026-09-02", "2026-08-26", "2026-08-19"]
-START_DAY = "2026-08-10"
+WINDOW_DAYS = 30
+STEP_DAYS = 7
+LAST_END = "2026-09-09"
+
+
+def window_ends(n: int) -> list[str]:
+    import datetime as dt
+    end = dt.date.fromisoformat(LAST_END)
+    return [(end - dt.timedelta(days=STEP_DAYS * i)).isoformat() for i in range(n)]
+
+
+def window_start(end_day: str) -> str:
+    import datetime as dt
+    return max(dt.date.fromisoformat(end_day) - dt.timedelta(days=WINDOW_DAYS),
+               dt.date.fromisoformat("2026-03-16")).isoformat()
 
 
 def metric(summary: Path) -> dict:
@@ -45,19 +60,20 @@ def main() -> None:
     env["PYTHONIOENCODING"] = "utf-8"
     env["MULTIBUSINESS_SUPERSET_COMMON"] = str(ROOT / "skills" / "superset-sql-query" / "common")
     out = []
-    for i, end_day in enumerate(END_DAYS[:n], 1):
+    for i, end_day in enumerate(window_ends(n), 1):
+        start_day = window_start(end_day)
         out_dir = ROOT / f"recent_month_large_mainstream_v5_roll_w{i}"
         cmd = [PY, "-u", str(ROOT / "v5_hybrid_recommendation.py"), "build",
                "--pairs", str(PAIRS), "--historical-profiles", str(PROFILES),
                "--current-nodes", str(CURRENT), "--source-summary", str(SUMMARY),
-               "--output-dir", str(out_dir), "--start-day", START_DAY, "--end-day", end_day]
-        print(f"[w{i}] {START_DAY}..{end_day} -> {out_dir.name}", flush=True)
+               "--output-dir", str(out_dir), "--start-day", start_day, "--end-day", end_day]
+        print(f"[w{i}] {start_day}..{end_day} -> {out_dir.name}", flush=True)
         r = subprocess.run(cmd, cwd=str(ROOT), env=env, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if r.returncode != 0:
             print(f"[w{i}] FAILED: {(r.stdout or '')[-400:]}{(r.stderr or '')[-400:]}")
             continue
         m = metric(out_dir / "v5_training_summary.json")
-        m["window"] = f"{START_DAY}..{end_day}"
+        m["window"] = f"{start_day}..{end_day}"
         out.append(m)
         print(f"[w{i}] test={m['test']} rows={m['rows']} miner R2={m['miner_r2']:.4f} plat R2={m['plat_r2']:.4f}")
 
