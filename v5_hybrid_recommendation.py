@@ -83,6 +83,24 @@ def clean_feature(value: Any) -> str:
     return v4.clean(value)
 
 
+_BLOCKLIST_CACHE: set[str] | None = None
+
+
+def blocked_businesses() -> set[str]:
+    """业务级证据不足清单（V5_BUSINESS_BLOCKLIST 指向的每行一个业务 ID 的文本文件）。"""
+    global _BLOCKLIST_CACHE
+    if _BLOCKLIST_CACHE is None:
+        path = os.getenv("V5_BUSINESS_BLOCKLIST", "").strip()
+        items: set[str] = set()
+        if path and Path(path).exists():
+            for line in Path(path).read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    items.add(line)
+        _BLOCKLIST_CACHE = items
+    return _BLOCKLIST_CACHE
+
+
 def filter_supported_schedule_rows(frame: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     valid = frame["network_schedule_type"].isin(ALLOWED_SCHEDULE_TYPES)
     return frame[valid].copy(), int((~valid).sum())
@@ -744,6 +762,9 @@ def recommendation_output(
     selected = ranked[:top_k]
     gap = selected[0]["combined_score"] - selected[1]["combined_score"]
     action = v4.recommendation_action(selected[0], gap)
+    business_evidence_blocked = str(selected[0]["business"]) in blocked_businesses()
+    if business_evidence_blocked:
+        action = "暂不推荐执行"
     bandwidth = max(v4.finite_number(row.get("bw"), 0.0), 0.0)
     current_business = v1.clean_cell(row.get("current_business"))
     current_name = v1.clean_cell(row.get("current_business_name"))
@@ -789,6 +810,7 @@ def recommendation_output(
         ),
         "build_bandwidth_mbps": bandwidth,
         "recommendation_action": action,
+        "business_evidence_blocked": business_evidence_blocked,
         "recommendation_confidence": selected[0]["confidence"],
         "top1_score_gap": gap,
         "recommendation_reason": v4.confidence_reason(selected[0]),
