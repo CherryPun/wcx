@@ -976,6 +976,14 @@ def build(args: argparse.Namespace) -> int:
     calibration = calibration[calibration["business"].isin(candidates)].copy()
     test = test[test["business"].isin(candidates)].copy()
 
+    # 评估口径：大节点建设带宽下限（默认 500 Mbps，0=不过滤）。只影响评估集，不影响训练与推荐输出。
+    eval_bandwidth_floor = float(getattr(args, "min_build_bandwidth", 0.0) or 0.0)
+    if eval_bandwidth_floor > 0 and "bw" in test.columns:
+        bw_test = pd.to_numeric(test["bw"], errors="coerce")
+        before = len(test)
+        test = test[bw_test >= eval_bandwidth_floor].copy()
+        print(f"[eval] bandwidth floor {eval_bandwidth_floor:g} Mbps: test {before} -> {len(test)} rows")
+
     # 量趋势（新）：每业务取窗口内最新一天的 business_trend 作为推断期特征
     latest_business_trend: dict[str, str] = {}
     if "business_trend" in ENCODE_FIELDS and "business_trend" in pairs.columns:
@@ -1461,6 +1469,8 @@ def parse_args() -> argparse.Namespace:
     build_parser.add_argument("--business-map", type=Path, default=v4.DEFAULT_BUSINESS_MAP)
     build_parser.add_argument("--source-summary", type=Path, default=v4.DEFAULT_SOURCE_SUMMARY)
     build_parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    build_parser.add_argument("--min-build-bandwidth", type=float, default=500.0,
+                              help="评估集建设带宽下限(Mbps)，0=不过滤；只影响评估，不影响训练与推荐")
     build_parser.add_argument("--report-template", type=Path, default=v4.DEFAULT_REPORT_TEMPLATE)
     build_parser.add_argument("--validation-days", type=int, default=7)
     build_parser.add_argument("--calibration-days", type=int, default=3)

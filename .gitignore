@@ -10,6 +10,7 @@ __pycache__/
 .DS_Store
 
 # Local training outputs and fetched source data
+snapshots/
 business_binding_audit/
 current_non_idc_large_scan*/
 mainstream_data_statistics/
