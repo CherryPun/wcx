@@ -1,6 +1,7 @@
 # 账本 Schema v1（新）
 
 **目的**：把"账本（唯一真相）"的粒度、字段、语义与不变量一次定死，避免后续返工（schema 晚改就要迁移）。
+**适配器**：`wcx2实验代码（新）/账本适配（新）.py`（legacy 列名 → schema v1）。
 **校验工具**：`wcx2实验代码（新）/账本契约检查（新）.py`；**固定样本**：`fixtures/ledger_sample_v1.csv`；**测试**：`test_ledger_contract.py`（6/6）。
 
 ## 1. 表定义：`ledger_node_business_day`（节点×业务×日）
@@ -66,3 +67,11 @@ allocate -> v6_capacity_aware_allocation.py build    （容量约束分配）
 report   -> 门槛看板 / 业务级可信度 / RJ 模板报告
 ```
 入口：`wcx2流水线（新）.py` + `pipeline_config.json`（路径与窗口；凭证仅走环境变量）。
+
+## 7. 真实数据校验结果（2026-09-14）
+
+`账本适配（新）.py` 产出 **281,461 行**（12,131 节点 / 31 天）→ `账本契约检查（新）.py` **ALL PASS**：
+键唯一、必需列无空值、带宽>0、白名单内、日期在窗口内、`is_primary` 语义正确。
+
+**顺带发现**：`build_bandwidth_mbps` 最小值为 **1.0 Mbps** —— 这正是"小带宽尾部主导误差"（见 `指标口径对账（新）.md`、`w6复盘（新）.md`）的源头。
+建议上游对分母设下限（如 <500 Mbps 单独归类），或明确这类节点不进入单位收益训练/评估。
