@@ -1150,8 +1150,47 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--chunk-size", type=int, default=700)
     parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--min-business-support", type=int, default=30)
+    parser.add_argument("--ledger-output", type=Path, default=None,
+                        help="[wcx2] 账本 schema v1 输出路径（默认 <output-dir>/ledger_node_business_day_v1.csv）")
+    parser.add_argument("--ledger-min-build-bandwidth", type=float, default=500.0,
+                        help="[wcx2] 账本中标记带宽下限(Mbps)；仅标记 bandwidth_below_floor，不删除数据")
     parser.add_argument("--refresh", action="store_true")
     return parser.parse_args()
+
+
+def build_ledger_v1(
+    pairs: pd.DataFrame,
+    audit: pd.DataFrame | None = None,
+    min_build_bandwidth: float = 500.0,
+) -> pd.DataFrame:
+    """[wcx2 新增] 把训练 pairs 适配为账本 schema v1（`ledger_schema（新）.md`）。
+
+    - 列名映射：construction_bandwidth_mbps→build_bandwidth_mbps、cum_cost_7d→cost_amount、cum_revenue_7d→revenue_amount
+    - 多业务语义：来自 audit 的 clean 行（V5 口径下均为单业务，is_primary=True）
+    - 分母下限：不删除数据，只标记 `bandwidth_below_floor`，下游按需过滤
+    """
+    cols = ["sample_day", "node_id", "business", "construction_bandwidth_mbps",
+            "cum_cost_7d", "cum_revenue_7d", "sample_weight"]
+    out = pairs[[c for c in cols if c in pairs.columns]].rename(columns={
+        "construction_bandwidth_mbps": "build_bandwidth_mbps",
+        "cum_cost_7d": "cost_amount",
+        "cum_revenue_7d": "revenue_amount",
+    }).copy()
+    out["business"] = pd.to_numeric(out["business"], errors="coerce").astype("int64")
+    if audit is not None and {"node_id", "sample_day", "status", "active_mainstream_count"} <= set(audit.columns):
+        clean = audit[audit["status"].eq("clean")][["node_id", "sample_day", "active_mainstream_count"]]
+        out = out.merge(clean, on=["node_id", "sample_day"], how="left")
+    out["active_business_count"] = pd.to_numeric(
+        out.get("active_mainstream_count", pd.Series(1, index=out.index)), errors="coerce"
+    ).fillna(1).astype(int)
+    out = out.drop(columns=[c for c in ("active_mainstream_count",) if c in out.columns])
+    out["is_primary"] = out["active_business_count"].eq(1)
+    bw = pd.to_numeric(out["build_bandwidth_mbps"], errors="coerce")
+    out["bandwidth_below_floor"] = bw < float(min_build_bandwidth)
+    order = ["sample_day", "node_id", "business", "build_bandwidth_mbps", "cost_amount",
+             "revenue_amount", "sample_weight", "active_business_count", "is_primary",
+             "bandwidth_below_floor"]
+    return out[[c for c in order if c in out.columns]]
 
 
 def main() -> int:
@@ -1236,6 +1275,21 @@ def main() -> int:
         "unit_bandwidth",
         REWARD_ONLY_RANK_WEIGHTS,
     )
+
+    # [wcx2 新增] 账本 schema v1（唯一真相表）：ingest 阶段直接产出，无需后置适配
+    try:
+        pairs_frame = pd.read_csv(artifacts["training_pairs"], low_memory=False)
+        ledger = build_ledger_v1(pairs_frame, audit, args.ledger_min_build_bandwidth)
+        ledger_path = args.ledger_output or (args.output_dir / "ledger_node_business_day_v1.csv")
+        ledger.to_csv(ledger_path, index=False, encoding="utf-8-sig")
+        below = int(ledger["bandwidth_below_floor"].sum())
+        print(
+            f"[ledger v1] {len(ledger):,} 行 | 节点日 {ledger.groupby(['sample_day', 'node_id']).ngroups:,}"
+            f" | 建设带宽<{args.ledger_min_build_bandwidth:g}Mbps 的行 {below:,}（仅标记，未删除）"
+            f" -> {ledger_path.name}"
+        )
+    except Exception as exc:  # 账本产出失败不应阻断主流程
+        print(f"[ledger v1] 跳过：{exc}")
 
     status_counts = audit["status"].value_counts().to_dict()
     business_support = (
