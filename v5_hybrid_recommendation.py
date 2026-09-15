@@ -1008,6 +1008,11 @@ def build(args: argparse.Namespace) -> int:
     baseline_test = baseline_predictions(test, evaluation_baseline)
     baseline_train = baseline_predictions(train, evaluation_baseline)
     bounds = v4.target_bounds(train, candidates)
+    # 评估口径：与训练一致的按业务 P01–P99 winsorize（默认开）。防止个别极端归属值主导误差。
+    if int(getattr(args, "eval_winsorize", 1) or 0):
+        for target in TARGETS:
+            test[target] = clip_target(test, target, bounds)
+        print("[eval] winsorized test actuals to per-business P01-P99 bounds (raw actuals remain in pairs)")
     encoder = fit_encoder(train)
     standard_weights = v1.sample_weights(train).to_numpy(dtype=float)
     ipw_weights = propensity_weights(train, evaluation_baseline)
@@ -1471,6 +1476,8 @@ def parse_args() -> argparse.Namespace:
     build_parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     build_parser.add_argument("--min-build-bandwidth", type=float, default=500.0,
                               help="评估集建设带宽下限(Mbps)，0=不过滤；只影响评估，不影响训练与推荐")
+    build_parser.add_argument("--eval-winsorize", type=int, default=1,
+                              help="评估时是否按业务 P01–P99 裁剪真实值（1=是，0=用原始真实值）")
     build_parser.add_argument("--report-template", type=Path, default=v4.DEFAULT_REPORT_TEMPLATE)
     build_parser.add_argument("--validation-days", type=int, default=7)
     build_parser.add_argument("--calibration-days", type=int, default=3)
