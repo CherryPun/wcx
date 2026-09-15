@@ -103,6 +103,19 @@ def greedy(items: pd.DataFrame, pool_cap: pd.Series, biz_cap: pd.Series) -> pd.S
     return pd.Series(out, name="alloc_mbps")
 
 
+def concave_value(alloc: pd.Series, knots: pd.DataFrame) -> float:
+    """同一凹目标下的总价值（用于 LP vs greedy 对照）。"""
+    total = 0.0
+    biz_level = set(alloc.index.get_level_values(1)) if len(alloc) else set()
+    for biz in knots.index:
+        x = float(alloc.xs(biz, level=1).sum()) if biz in biz_level else 0.0
+        k1, k2, g = float(knots.loc[biz, "k1"]), float(knots.loc[biz, "k2"]), float(knots.loc[biz, "g_mean"])
+        total += min(x, k1) * g
+        total += min(max(x - k1, 0.0), k2 - k1) * SEGMENT_SLOPES[1] * g
+        total += max(x - k2, 0.0) * SEGMENT_SLOPES[2] * g
+    return total
+
+
 def metrics(alloc: pd.Series, pool_cap: pd.Series, biz_cap: pd.Series, demand: pd.Series, kind: str) -> dict:
     per_biz = alloc.groupby(level=1).sum() if len(alloc) else pd.Series(dtype=float)
     per_pool = alloc.groupby(level=0).sum() if len(alloc) else pd.Series(dtype=float)
@@ -121,7 +134,9 @@ def metrics(alloc: pd.Series, pool_cap: pd.Series, biz_cap: pd.Series, demand: p
     }
 
 
-def build_items(rec: pd.DataFrame, cap: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, pd.Series, pd.Series, pd.DataFrame]:
+def build_items(rec: pd.DataFrame, cap: pd.DataFrame, resource_model: str = "headroom") -> tuple[pd.DataFrame, pd.Series, pd.Series, pd.Series, pd.DataFrame]:
+    """resource_model=headroom：池容量 = 池内**唯一节点**带宽×target − 当前占用（不重复计数）；
+       =nodesum：旧口径，池内 top1-3 候选带宽求和（会重复计入同一节点）。"""
     rows = []
     for k in range(1, TOP_K + 1):
         cols = [f"business_top{k}", f"miner_unit_income_top{k}"]
@@ -143,13 +158,23 @@ def build_items(rec: pd.DataFrame, cap: pd.DataFrame) -> tuple[pd.DataFrame, pd.
         max_mbps=("bw", "sum"),
         g_pb=("g", "mean"),
     ).reset_index()
-    # 池容量 = 池内节点建设带宽合计；业务上限取 v6 业务级 ceiling
     caps = cap[cap["pool_level"].eq("business")].copy()
     caps["business"] = pd.to_numeric(caps["business"], errors="coerce")
     caps = caps.dropna(subset=["business"])
     biz_cap = caps.set_index(caps["business"].astype("int64"))["operational_capacity_ceiling_mbps"].astype(float)
     demand = agg.groupby("business")["max_mbps"].sum()
-    pool_cap = agg.groupby("pool")["max_mbps"].sum()
+
+    pool_nodes = rec.assign(
+        pool=rec["province"].astype(str) + "|" + rec["isp"].astype(str),
+        bw=pd.to_numeric(rec["build_bandwidth_mbps"], errors="coerce").fillna(0.0),
+    )
+    if resource_model == "headroom" and "current_business" in pool_nodes.columns:
+        cur = pd.to_numeric(pool_nodes["current_business"], errors="coerce").notna()
+        total = pool_nodes.groupby("pool")["bw"].sum()
+        used = pool_nodes[cur].groupby("pool")["bw"].sum()
+        pool_cap = (total * 0.7 - used.reindex(total.index).fillna(0.0)).clip(lower=0.0)
+    else:
+        pool_cap = agg.groupby("pool")["max_mbps"].sum()
 
     g_mean = agg.groupby("business")["g_pb"].mean()
     knots = pd.DataFrame({"g_mean": g_mean}).reindex(biz_cap.index).fillna(0.0)
@@ -206,6 +231,8 @@ def main() -> int:
     ap.add_argument("--recommendations", type=Path, default=DEFAULT_REC)
     ap.add_argument("--capacities", type=Path, default=DEFAULT_CAP)
     ap.add_argument("--output", type=Path, default=ROOT / "分配结果v0（新）.csv")
+    ap.add_argument("--resource-model", choices=["headroom", "nodesum"], default="headroom",
+                    help="headroom=池容量取(唯一节点带宽×0.7−当前占用)；nodesum=旧口径(候选带宽求和，会重复计数)")
     args = ap.parse_args()
     if args.self_test:
         return self_test()
@@ -231,10 +258,12 @@ def main() -> int:
         hold_pools = {p for p in top.index if p in cur.index and float(top[p]) == float(cur[p])}
 
     print("\n=== 分配器 v0 对照（池=省×运营商，业务上限=v6 业务级 ceiling）===")
-    print(f"池数 {len(pool_cap)} | 候选(池×业务)组合 {len(items)} | 业务上限数 {len(biz_cap)}")
+    print(f"资源模型={args.resource_model} | 池数 {len(pool_cap)} | 候选(池×业务)组合 {len(items)} | 业务上限数 {len(biz_cap)}")
     rows = [metrics(lp, pool_cap, biz_cap, demand, "LP 份额(份额+凹目标)"),
             metrics(gr, pool_cap, biz_cap, demand, "greedy(现做法)")]
     print(pd.DataFrame(rows).to_string(index=False))
+    lp_v, gr_v = concave_value(lp, knots), concave_value(gr, knots)
+    print(f"目标值（同一凹函数）：LP={lp_v:,.0f} | greedy={gr_v:,.0f} | LP 相对 +{(lp_v - gr_v) / max(gr_v, 1e-9):.2%}")
     print(f"hold 池占比（LP 分配的首选业务 == 当前业务）: {len(hold_pools)}/{len(pool_cap)} = {len(hold_pools)/max(len(pool_cap),1):.1%}")
 
     out = lp.reset_index().rename(columns={"level_0": "pool", "level_1": "business"})
