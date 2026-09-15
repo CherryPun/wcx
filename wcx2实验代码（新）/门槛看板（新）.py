@@ -30,26 +30,29 @@ def main() -> None:
     sel, base = s["model_comparison"]["selected"], s["model_comparison"]["baseline"]
     cold = s["model_comparison"].get("cold_start_test", {})
 
-    # 1 画像覆盖（列缺失按 0% 计，并逐字段报告）
-    if pairs.exists():
-        cols = pd.read_csv(pairs, nrows=1).columns
-        d = pd.read_csv(pairs, low_memory=False)
+    # 1 画像覆盖：按 V5 **真实加载源**（historical-profiles，节点静态属性）计算，
+    #   注意不能用磁盘上的 pairs CSV（那里没有这些列，会造成 0% 误报）。
+    prof = globals().get("PROFILES", ROOT / "recent_month_large_1d（新）" / "multibusiness_nodes_large_recent_1m.csv")
+    if Path(prof).exists():
+        cols = pd.read_csv(prof, nrows=1).columns
+        d = pd.read_csv(prof, low_memory=False)
         field_alias = {
-            "corenum_bucket": ["corenum_bucket", "corenum"],
-            "memtotal_bucket": ["memtotal_bucket", "memtotal"],
-            "totaldisksize_bucket": ["totaldisksize_bucket", "totaldisksize"],
-            "ipv6_capability": ["ipv6_capability"],
+            "corenum": ["corenum_bucket", "corenum"],
+            "memtotal": ["memtotal_bucket", "memtotal"],
+            "totaldisksize": ["totaldisksize_bucket", "totaldisksize"],
+            "ipv6": ["ipv6_capability", "dial_ipv6_enable", "join_isipv6schedule"],
         }
         parts, covs = [], []
         for target, alias in field_alias.items():
             hit = next((a for a in alias if a in cols), None)
             cov = float(d[hit].notna().mean()) if hit else 0.0
             covs.append(cov)
-            parts.append(f"{target.split('_')[0]} {cov:.0%}")
+            parts.append(f"{target} {cov:.0%}")
         cov = min(covs)
-        add("训练核心画像覆盖率 ≥95%", "PASS" if cov >= 0.95 else "FAIL", " / ".join(parts), "四字段逐项（缺列=0%）")
+        add("训练核心画像覆盖率 ≥95%", "PASS" if cov >= 0.95 else "FAIL", " / ".join(parts),
+            f"源={Path(prof).name}（V5 加载时会补入训练帧）")
     else:
-        add("训练核心画像覆盖率 ≥95%", "UNKNOWN", "-", "pairs 缺失")
+        add("训练核心画像覆盖率 ≥95%", "UNKNOWN", "-", "historical-profiles 缺失")
 
     # 2 压测 as-of
     align = str(s["training_data"].get("latest_pressure_time_alignment", ""))
