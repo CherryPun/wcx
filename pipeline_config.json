@@ -1,0 +1,40 @@
+{
+  "_comment": "wcx2 流水线配置（新）：只放路径与窗口，不放凭证；凭证走环境变量 SUPERSET_* / NIULINK_AUTH",
+  "env": {
+    "MULTIBUSINESS_SUPERSET_COMMON": "skills/superset-sql-query/common",
+    "V5_RECENCY_HALF_LIFE": "7",
+    "V5_RECENCY_WEIGHT_CAP": "2.0",
+    "V5_NTHREAD": "1"
+  },
+  "window": {
+    "start_day": "2026-08-10",
+    "end_day": "2026-09-09"
+  },
+  "ingest": {
+    "source_dir": "recent_month_large_1d（新）",
+    "output_dir": "recent_month_large_mainstream_v3_daily_weighted（新）",
+    "current_nodes": "recent_month_large_mainstream_v3_daily_weighted（新）/current_online_inservice_non_idc_large_nodes_v3.csv",
+    "max_days": 178
+  },
+  "quote": {
+    "pairs": "recent_month_large_mainstream_v3_daily_weighted（新）/v1_training_pairs_large_mainstream_recent_1m.csv",
+    "historical_profiles": "recent_month_large_1d（新）/multibusiness_nodes_large_recent_1m.csv",
+    "latest_pressure_profiles": "latest_node_pressure_profiles.csv",
+    "current_nodes": "recent_month_large_mainstream_v3_daily_weighted（新）/current_online_inservice_non_idc_large_nodes_v3.csv",
+    "source_summary": "recent_month_large_mainstream_v3_daily_weighted（新）/v3_daily_training_summary.json",
+    "business_map": "v1_business_name_map_enriched.csv",
+    "output_dir": "recent_month_large_mainstream_v5_sw_7c2.0（新）",
+    "min_build_bandwidth": 500,
+    "eval_winsorize": 1
+  },
+  "allocate": {
+    "source_dir": "recent_month_large_1d（新）",
+    "recommendations": "recent_month_large_mainstream_v5_sw_7c2.0（新）/v5_node_recommendations.csv",
+    "output_dir": "recent_month_large_mainstream_v6_capacity_cap20_curfull（新）",
+    "target_utilization": 0.7
+  },
+  "report": {
+    "v5_dir": "recent_month_large_mainstream_v5_sw_7c2.0（新）",
+    "html_out": "节点推荐与分布（新）.html"
+  }
+}
