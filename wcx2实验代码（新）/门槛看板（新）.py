@@ -79,9 +79,9 @@ def main() -> None:
     rec = out / "v5_node_recommendations.csv"
     if rec.exists():
         r = pd.read_csv(rec, low_memory=False)
-        conf = pd.to_numeric(r["recommendation_confidence"], errors="coerce")
-        share = float((conf < 0.5).mean())
-        add("低置信度节点占比 <50%", "PASS" if share < 0.5 else "FAIL", f"{share:.1%}", "confidence<0.5")
+        conf = r["recommendation_confidence"].astype(str).str.strip().str.lower()
+        share = float(conf.eq("low").mean())
+        add("低置信度节点占比 <50%", "PASS" if share < 0.5 else "FAIL", f"{share:.1%}", "confidence 标签=low 的占比")
         lo, hi = pd.to_numeric(r["platform_unit_low90_top1"], errors="coerce"), pd.to_numeric(r["platform_unit_high90_top1"], errors="coerce")
         cross = float(((lo <= 0) & (hi >= 0)).mean())
         add("Top1 平台区间跨零 <50%", "PASS" if cross < 0.5 else "FAIL", f"{cross:.1%}")
